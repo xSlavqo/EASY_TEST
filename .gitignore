@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Środowiska wirtualne
+.venv/
+venv/
+env/
+
+# IDE / edytor
+.idea/
+*.swp
+*.swo
+
+# Logi bota
+logs/
+
+# System
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Stan bota (lokalny)
+data/

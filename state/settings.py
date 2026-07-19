@@ -1,0 +1,36 @@
+"""Ustawienia użytkownika — odczyt/zapis data/config.json przy każdym dostępie."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from .store import get_data, save_data
+
+_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = _ROOT / "data" / "config.json"
+
+# Domyślne wartości, gdy klucza nie ma w pliku.
+_DEFAULTS: dict[str, Any] = {
+    "close_game_after_cycle": False,
+}
+
+
+class Settings:
+    """settings.nazwa → odczyt JSON; settings.nazwa = x → zapis JSON."""
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_") or name not in _DEFAULTS:
+            raise AttributeError(f"nieznane ustawienie: {name}")
+        return get_data(CONFIG_PATH, name, _DEFAULTS[name])
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        if name not in _DEFAULTS:
+            raise AttributeError(f"nieznane ustawienie: {name}")
+        save_data(CONFIG_PATH, name, value)
+
+
+settings = Settings()
