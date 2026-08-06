@@ -13,6 +13,9 @@ CONFIG_PATH = _ROOT / "data" / "config.json"
 # Domyślne wartości, gdy klucza nie ma w pliku.
 _DEFAULTS: dict[str, Any] = {
     "close_game_after_cycle": False,
+    "alliance_rss_enabled": True,
+    "alliance_pit_enabled": True,
+    "gather_rss_enabled": True,
 }
 
 

@@ -1,4 +1,4 @@
-"""Natychmiastowe zatrzymanie bota — skrót F9."""
+"""Zatrzymanie bota — skrót F9 / przycisk Stop. Start tylko z UI."""
 
 from __future__ import annotations
 
@@ -10,7 +10,9 @@ from ctypes import wintypes
 
 from log import logger
 
+# Domyślnie zatrzymany — bot nie rusza, dopóki UI nie wywoła clear_stop().
 _stop = threading.Event()
+_stop.set()
 _listener_started = False
 
 HOTKEY_ID = 1
@@ -26,7 +28,13 @@ class StopRequested(Exception):
 def request_stop() -> None:
     if not _stop.is_set():
         _stop.set()
-        logger.warning("zatrzymanie bota (F9) — przerywam natychmiast")
+        logger.warning("zatrzymanie bota — przerywam natychmiast")
+
+
+def clear_stop() -> None:
+    if _stop.is_set():
+        _stop.clear()
+        logger.info("bot uruchomiony")
 
 
 def is_stopped() -> bool:

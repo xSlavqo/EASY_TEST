@@ -19,6 +19,7 @@ if str(_ROOT) not in sys.path:
 
 from input import find_and_click
 from log import logger
+from state.stop import sleep as stop_sleep
 
 LAUNCHER_PATH = Path(r"C:\Program Files (x86)\Call of Dragons\launcher.exe")
 LAUNCHER_PROCESSES = ("Launcher_COD.exe", "launcher.exe")
@@ -53,7 +54,7 @@ def run_game() -> bool:
     if not start_game():
         return False
 
-    time.sleep(_GAME_LOADED_INITIAL_DELAY)
+    stop_sleep(_GAME_LOADED_INITIAL_DELAY)
     activate_window("game", attempts=8)
     return True
 
@@ -66,8 +67,7 @@ def activate_window(target: Literal["game", "launcher"], *, attempts: int = 5) -
             for hwnd in _window_hwnds(name):
                 if _focus_hwnd(hwnd):
                     return True
-        time.sleep(random.uniform(0.25, 0.5))
-    logger.warning("nie udało się aktywować okna: %s", target)
+        stop_sleep(random.uniform(0.25, 0.5))
     return False
 
 
@@ -94,14 +94,14 @@ def close_windows(target: Target = "all", *, timeout: float = _CLOSE_TIMEOUT) ->
     while time.monotonic() < deadline:
         if not any(_process_running(name) for name in running):
             return True
-        time.sleep(random.uniform(0.3, 0.8))
+        stop_sleep(random.uniform(0.3, 0.8))
     return False
 
 
 def start_launcher() -> bool:
     """Uruchom launcher.exe i poczekaj aż proces się pojawi."""
     if not LAUNCHER_PATH.is_file():
-        raise FileNotFoundError(f"Brak pliku: {LAUNCHER_PATH}")
+        return False
 
     subprocess.Popen([str(LAUNCHER_PATH)], cwd=str(LAUNCHER_PATH.parent))
 
@@ -109,36 +109,34 @@ def start_launcher() -> bool:
     while time.monotonic() < deadline:
         if any(_process_running(name) for name in LAUNCHER_PROCESSES):
             return True
-        time.sleep(random.uniform(0.5, 1.2))
-
-    logger.error("launcher nie uruchomił się w czasie %s s", _PROCESS_WAIT_TIMEOUT)
+        stop_sleep(random.uniform(0.5, 1.2))
     return False
 
 
 def start_game() -> bool:
     """Aktywuj launcher → Start → poczekaj na proces gry."""
     if not activate_window("launcher"):
-        logger.warning("launcher nieaktywny — uruchamiam z pliku")
         if not start_launcher():
+            logger.error("nie mogę w żaden sposób włączyć launchera")
             return False
-        time.sleep(random.uniform(0.8, 1.6))
+        stop_sleep(random.uniform(0.8, 1.6))
         if not activate_window("launcher"):
-            logger.error("nie udało się aktywować launchera po uruchomieniu")
+            logger.error("nie mogę w żaden sposób włączyć launchera")
             return False
 
-    time.sleep(random.uniform(0.8, 1.6))
+    stop_sleep(random.uniform(0.8, 1.6))
 
     if not find_and_click(START_BUTTON_TEMPLATE, timeout=_START_CLICK_TIMEOUT):
         logger.error("nie udało się kliknąć Start w launcherze")
         return False
 
-    time.sleep(random.uniform(1.0, 2.0))
+    stop_sleep(random.uniform(1.0, 2.0))
 
     deadline = time.monotonic() + _PROCESS_WAIT_TIMEOUT
     while time.monotonic() < deadline:
         if _process_running(GAME_PROCESS):
             return True
-        time.sleep(random.uniform(0.5, 1.2))
+        stop_sleep(random.uniform(0.5, 1.2))
 
     logger.error("proces gry nie pojawił się w czasie %s s po Start", _PROCESS_WAIT_TIMEOUT)
     return False
@@ -170,6 +168,17 @@ def _get_pids(image_name: str) -> list[int]:
         except ValueError:
             continue
     return pids
+
+
+def game_window_rect() -> tuple[int, int, int, int] | None:
+    """(left, top, right, bottom) największego okna gry albo None."""
+    hwnds = _window_hwnds(GAME_PROCESS)
+    if not hwnds:
+        return None
+    rect = wintypes.RECT()
+    if not _user32.GetWindowRect(hwnds[0], ctypes.byref(rect)):
+        return None
+    return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
 
 
 def _window_hwnds(image_name: str) -> list[int]:

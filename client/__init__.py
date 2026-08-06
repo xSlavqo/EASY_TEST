@@ -3,6 +3,7 @@
 from .game_launcher import (
     activate_window,
     close_windows,
+    game_window_rect,
     run_game,
     start_game,
     start_launcher,
@@ -11,6 +12,7 @@ from .game_launcher import (
 __all__ = [
     "activate_window",
     "close_windows",
+    "game_window_rect",
     "run_game",
     "start_game",
     "start_launcher",

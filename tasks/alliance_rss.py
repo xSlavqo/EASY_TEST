@@ -12,9 +12,8 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from game import in_game
-from input import find_and_click
-from input.api import keyboard
+from game import go_to_alliance_menu
+from input import find_and_click, press_key
 from log import logger
 from state.stop import sleep as stop_sleep
 
@@ -27,18 +26,8 @@ _ACTION_DELAY = (0.5, 1.0)
 _AFTER_COLLECT_DELAY = (2.0, 3.0)
 
 
-def _go_to_aliance_menu() -> bool:
-    """Sprawdź widok gry, potem otwórz menu sojuszu klawiszem O."""
-    if not in_game():
-        logger.error("nie jesteśmy w grze — nie można otworzyć menu sojuszu")
-        return False
-
-    keyboard.press_key("o")
-    return True
-
-
 def alliance_rss() -> bool:
-    if not _go_to_aliance_menu():
+    if not go_to_alliance_menu():
         return False
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
@@ -52,5 +41,4 @@ def alliance_rss() -> bool:
         return False
     stop_sleep(random.uniform(*_AFTER_COLLECT_DELAY))
 
-    keyboard.press_key("esc")
     return True

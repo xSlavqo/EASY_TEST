@@ -24,3 +24,7 @@ Desktop.ini
 
 # Stan bota (lokalny)
 data/
+
+# Discord — lokalny config z tokenem (w repo zostaje config.example.json)
+discord_bot/config.json
+

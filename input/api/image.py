@@ -9,7 +9,7 @@ import time
 
 from .click import click_region
 from ..engine.vision import TemplateSource, locate_template, resolve_template, search_template
-from state.stop import check_stop
+from state.stop import check_stop, sleep as stop_sleep
 
 DEFAULT_THRESHOLD = 0.99
 
@@ -47,7 +47,7 @@ def find_and_click(
         if rect is not None:
             click_region(*rect, margin=margin, offset_x=offset_x, offset_y=offset_y)
             return True
-        time.sleep(random.uniform(*poll_interval))
+        stop_sleep(random.uniform(*poll_interval))
 
     return False
 
@@ -74,7 +74,7 @@ def find_on_screen(
         if time.monotonic() >= deadline:
             return False
 
-        time.sleep(random.uniform(*poll_interval))
+        stop_sleep(random.uniform(*poll_interval))
 
 
 def wait_for_any_on_screen(
@@ -84,16 +84,22 @@ def wait_for_any_on_screen(
     timeout: float = DEFAULT_WAIT_ANY_TIMEOUT,
     initial_delay: float = DEFAULT_WAIT_INITIAL_DELAY,
     poll_interval: tuple[float, float] = DEFAULT_POLL_INTERVAL,
-) -> bool:
-    """Czekaj aż którykolwiek z szablonów pojawi się na ekranie."""
+    region: tuple[int, int, int, int] | None = None,
+) -> tuple[int, tuple[int, int, int, int]] | None:
+    """
+    Czekaj aż którykolwiek szablon pojawi się na ekranie.
+
+    Zwraca (indeks w liście, rect x/y/w/h) albo None po timeout.
+    """
     if initial_delay > 0:
-        time.sleep(initial_delay)
+        stop_sleep(initial_delay)
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         check_stop()
-        for template in templates:
-            if find_on_screen(template, threshold=threshold):
-                return True
-        time.sleep(random.uniform(*poll_interval))
-    return False
+        for index, template in enumerate(templates):
+            rect = locate_template(template, threshold, region=region)
+            if rect is not None:
+                return index, rect
+        stop_sleep(random.uniform(*poll_interval))
+    return None

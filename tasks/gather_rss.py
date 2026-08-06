@@ -45,7 +45,7 @@ _RSS_FIND = _RSS_TEMPLATES_DIR / "rss_find.png"
 _RSS_PREPARE_TO_GATHER = _RSS_TEMPLATES_DIR / "rss_prepare_to_gather.png"
 _RSS_CREATE_LEGION = _RSS_TEMPLATES_DIR / "rss_create_legion.png"
 _RSS_DELETE_ONE_HERO = _RSS_TEMPLATES_DIR / "rss_delete_one_hero.png"
-_RSS_GO_GATHER = _RSS_TEMPLATES_DIR / "rss_go_gather.png"
+_LEGION_START = _RSS_TEMPLATES_DIR / "legion_start.png"
 
 _SendResult = Literal["sent", "sent_last", "no_more", "failed"]
 
@@ -112,7 +112,6 @@ def _pick_resource():
         candidates = [r for r in candidates if r[2] != _last_resource]
     picked = random.choice(candidates)
     _last_resource = picked[2]
-    logger.info("wybrano surowiec: %s (%s)", picked[1], picked[2])
     return picked
 
 
@@ -163,7 +162,7 @@ def _try_send_one_legion(
 
     remaining = _legions_remaining_in_field()
     if remaining is not None and remaining <= 0:
-        logger.info("pole pełne — koniec wysyłania legionów")
+        logger.info("wszystkie legiony po za miastem - przerywam wysyłanie")
         return "no_more", set_rss
 
     if not find_and_click(_RSS_CREATE_LEGION, timeout=_CLICK_TIMEOUT):
@@ -176,14 +175,13 @@ def _try_send_one_legion(
             logger.warning("brak rss_delete_one_hero.png — pomijam krok")
         stop_sleep(random.uniform(*_ACTION_DELAY))
 
-    if not find_and_click(_RSS_GO_GATHER, timeout=_CLICK_TIMEOUT):
-        logger.warning("nie znaleziono rss_go_gather.png")
+    if not find_and_click(_LEGION_START, timeout=_CLICK_TIMEOUT):
+        logger.warning("nie znaleziono legion_start.png")
         return "failed", set_rss
 
     set_rss = False
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
     if remaining == 1:
-        logger.info("wysłano ostatni legion na pole — pole będzie pełne")
         return "sent_last", set_rss
     return "sent", set_rss
