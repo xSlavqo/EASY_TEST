@@ -7,7 +7,6 @@ from .view_detector import (
     go_on_map,
     go_to_city,
     in_game,
-    run_test,
     switch_view,
 )
 
@@ -19,6 +18,5 @@ __all__ = [
     "go_to_city",
     "go_to_setting",
     "in_game",
-    "run_test",
     "switch_view",
 ]

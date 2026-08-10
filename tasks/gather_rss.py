@@ -16,15 +16,17 @@ if str(_ROOT) not in sys.path:
 
 from input import click_region, find_and_click, get_text, press_key
 from log import logger
+from state.settings import settings
 from state.stop import check_stop, sleep as stop_sleep
 
 from game import go_on_map
 
 # Ikony surowców w dolnym pasku wyszukiwania (1920×1080) — (x,y,w,h), label, key
+# Włączanie: gather_rss_gold / gather_rss_wood / gather_rss_ore w data/config.json
 _RESOURCES = (
-    # ((685, 981, 123, 62), "kopalnia złota", "gold"),
-    # ((866, 976, 157, 73), "obóz drwali", "wood"),
-    ((1112, 976, 134, 72), "kopalnia rudy", "ore"),  # kamień — tymczasowo jedyny aktywny
+    ((685, 981, 123, 62), "kopalnia złota", "gold"),
+    ((866, 976, 157, 73), "obóz drwali", "wood"),
+    ((1112, 976, 134, 72), "kopalnia rudy", "ore"),
 )
 _ACTION_DELAY = (0.3, 0.7)
 _ICON_CLICK_MARGIN = 0.15
@@ -64,6 +66,10 @@ def gather_rss() -> tuple[bool, int]:
         return False, 0
 
     resource = _pick_resource()
+    if resource is None:
+        logger.error("brak włączonych surowców w config (gather_rss_gold/wood/ore)")
+        return False, 0
+
     set_rss = True
 
     legions_sent = 0
@@ -105,9 +111,16 @@ def gather_rss() -> tuple[bool, int]:
 
 
 def _pick_resource():
-    """Losuj surowiec; pomiń _last_resource, jeśli są inne opcje."""
+    """Losuj włączony surowiec; pomiń _last_resource, jeśli są inne opcje."""
     global _last_resource
-    candidates = list(_RESOURCES)
+    enabled = {
+        "gold": settings.gather_rss_gold,
+        "wood": settings.gather_rss_wood,
+        "ore": settings.gather_rss_ore,
+    }
+    candidates = [r for r in _RESOURCES if enabled.get(r[2])]
+    if not candidates:
+        return None
     if _last_resource is not None and len(candidates) > 1:
         candidates = [r for r in candidates if r[2] != _last_resource]
     picked = random.choice(candidates)

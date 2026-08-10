@@ -12,7 +12,8 @@ import time
 from difflib import SequenceMatcher
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+# Pakiet jest w game/hero_manager/ → root projektu = 3 poziomy wyżej.
+_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
@@ -23,8 +24,9 @@ from state.keys import HEROES_VISITED
 from state.stop import check_stop, request_stop, sleep as stop_sleep
 from state.store import INFO_PATH, get_data, save_data
 
-from .navigation import go_to_setting
-from .view_detector import in_game
+from ..navigation import go_to_setting
+from ..view_detector import in_game
+from .hero import Hero
 
 _TEMPLATES_DIR = _ROOT / "templates"
 _HEROES_DIR = _TEMPLATES_DIR / "heroes"
@@ -68,27 +70,6 @@ _MAX_HERO_MISS = 3
 _SWAP_CLICK_OFFSET_X = (150, 250)
 _SWAP_LOOKUP_TIMEOUT = 2.0
 _SWAP_CONFIRM_TIMEOUT = 30.0
-
-
-class Hero:
-    """Jedna postać — email konta (z folderu = przypisany do main.png), awatary, stan."""
-
-    def __init__(
-        self,
-        email: str,
-        hero_id: str,
-        main: Path,
-        swap: Path | None,
-    ) -> None:
-        # Adres konta z templates/heroes/<email>/... — ten sam email idzie do account_swap (OCR).
-        self.email = email
-        self.id = hero_id
-        self.main = main
-        self.swap = swap
-        self.logged_in = False
-        self.visited = False
-        # None = brak sojuszu; str = ID sojuszu (na razie stałe MZ2).
-        self.alliance: str | None = "MZ2"
 
 
 class HeroManager:
@@ -364,9 +345,17 @@ class HeroManager:
             )
             return False
 
-        for sx, sy, sw, sh in _ACC_SWAP_STEPS:
-            click_region(sx, sy, sw, sh, margin=_REGION_CLICK_MARGIN)
-            stop_sleep(random.uniform(*_STEP_DELAY))
+        sx, sy, sw, sh = _ACC_SWAP_STEPS[0]
+        click_region(sx, sy, sw, sh, margin=_REGION_CLICK_MARGIN)
+        stop_sleep(random.uniform(*_STEP_DELAY))
+
+        sx, sy, sw, sh = _ACC_SWAP_STEPS[1]
+        click_region(sx, sy, sw, sh, margin=_REGION_CLICK_MARGIN)
+        stop_sleep(random.uniform(*_STEP_DELAY))
+
+        sx, sy, sw, sh = _ACC_SWAP_STEPS[2]
+        click_region(sx, sy, sw, sh, margin=_REGION_CLICK_MARGIN)
+        stop_sleep(random.uniform(0.5, 1.0))
 
         # OCR slotów → klik nieodwiedzonego emaila → START (acc_swap_confirm).
         target_by_key = {email.lower().replace(" ", ""): email for email in other_emails}
@@ -400,7 +389,7 @@ class HeroManager:
 
             matched = target_by_key[matched_key]
             click_region(*slot, margin=_REGION_CLICK_MARGIN)
-            stop_sleep(random.uniform(*_STEP_DELAY))
+            stop_sleep(random.uniform(0.5, 1.0))
             clicked_email = matched
             break
 

@@ -41,27 +41,6 @@ def switch_view() -> None:
     stop_sleep(random.uniform(*_UI_LOAD_DELAY))
 
 
-def _capture_view_screen():
-    """Zrzut ekranu do porównania szablonów miasto/map."""
-    return screenshot()
-
-
-def _view_from_scores(city_score: float, map_score: float) -> GameView | None:
-    city_ok = city_score >= _DETECT_THRESHOLD
-    map_ok = map_score >= _DETECT_THRESHOLD
-
-    if city_ok and not map_ok:
-        return GameView.CITY
-    if map_ok and not city_ok:
-        return GameView.MAP
-    if city_ok and map_ok:
-        if city_score > map_score:
-            return GameView.CITY
-        if map_score > city_score:
-            return GameView.MAP
-    return None
-
-
 def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
     """
     Określ, czy gra pokazuje widok miasta czy mapy.
@@ -73,11 +52,22 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
     """
     last_city = last_map = 0.0
     for attempt in range(max_attempts):
-        screen = _capture_view_screen()
+        screen = screenshot()
         city_score = max(match_score(screen, t) for t in IN_CITY_TEMPLATES)
         map_score = max(match_score(screen, t) for t in ON_MAP_TEMPLATES)
         last_city, last_map = city_score, map_score
-        view = _view_from_scores(city_score, map_score)
+
+        city_ok = city_score >= _DETECT_THRESHOLD
+        map_ok = map_score >= _DETECT_THRESHOLD
+        if city_ok and not map_ok:
+            view = GameView.CITY
+        elif map_ok and not city_ok:
+            view = GameView.MAP
+        elif city_ok and map_ok and city_score != map_score:
+            view = GameView.CITY if city_score > map_score else GameView.MAP
+        else:
+            view = None
+
         if view is not None:
             # Ustawienia otwarte nad miastem/mapą — zamknij Esc i potwierdź widok jeszcze raz.
             if match_score(screen, SETTING_BUTTON_TEMPLATE) >= _DETECT_THRESHOLD:
@@ -140,35 +130,3 @@ def _ensure_view(target: GameView) -> bool:
     )
     return False
 
-
-def run_test() -> None:
-    """Test wykrywania widoku: detect → switch → detect."""
-    from state.stop import clear_stop
-
-    clear_stop()  # standalone: domyślnie bot jest zatrzymany
-    print("Wykrywanie biezacego widoku...")
-    before = detect_view()
-    print(f"Przed: {before.value}")
-
-    print("Przelaczanie widoku (spacja)...")
-    switch_view()
-
-    print("Wykrywanie po przelaczeniu...")
-    after = detect_view()
-    print(f"Po:    {after.value}")
-
-    if before is not GameView.UNKNOWN and after is not GameView.UNKNOWN:
-        if before is after:
-            print("Uwaga: widok sie nie zmienil — sprawdz gre lub szablony.")
-        else:
-            print("OK — widok sie zmienil.")
-
-
-if __name__ == "__main__":
-    if sys.platform == "win32":
-        try:
-            sys.stdout.reconfigure(encoding="utf-8")
-        except Exception:
-            pass
-
-    run_test()

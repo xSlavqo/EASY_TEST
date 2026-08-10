@@ -30,13 +30,13 @@ from state.stop import (
 from tasks.alliance_pit import alliance_pit
 from tasks.alliance_rss import alliance_rss
 from tasks.gather_rss import gather_rss
-from ui.app import run_ui
+from www.app import run_www
 
 _CYCLE_FAIL_RETRY_SEC = 60.0
 
 _CYCLE_INTERVAL_MIN_SEC = 4 * 60 * 60
 _CYCLE_INTERVAL_MAX_SEC = 5 * 60 * 60
-_ALLIANCE_COOLDOWN_SEC = 18 * 60 * 60
+_ALLIANCE_COOLDOWN_SEC = 10 * 60 * 60
 
 # Odczekanie na przeładowanie konta po swapie, zanim aktywujemy okno gry.
 _RELOGIN_FOCUS_DELAY_SEC = 15.0
@@ -62,13 +62,16 @@ def _run_cycle() -> bool:
             if manager.is_in_alliance():
                 # Zbieranie surowców sojuszu.
                 if settings.alliance_rss_enabled and is_due(TASK_ALLIANCE_RSS):
+                    activate_window("game", attempts=8)
                     alliance_rss()
                 # Centrum zasobów przymierza (pit).
                 if settings.alliance_pit_enabled and not alliance_pit_skip:
+                    activate_window("game", attempts=8)
                     alliance_pit_skip = alliance_pit()
 
             # Zbieranie RSS na mapie — fail → koniec taska u tego hero, jedziemy dalej.
             if settings.gather_rss_enabled:
+                activate_window("game", attempts=8)
                 rss = gather_rss()
                 if not rss[0]:
                     logger.error("gather_rss nieudany — przechodzę do kolejnego hero")
@@ -137,11 +140,11 @@ def _bot_loop() -> None:
 
 
 def _on_ui_ready() -> None:
-    """Discord + listener F9 + wątek bota (zatrzymany — czeka na Start)."""
+    """Discord + listener F9 + wątek bota (zatrzymany — czeka na Start z panelu WWW)."""
     start_discord_bot()
     start_hotkey_listener()
     threading.Thread(target=_bot_loop, name="bot", daemon=True).start()
 
 
 if __name__ == "__main__":
-    run_ui(on_ready=_on_ui_ready, on_start=clear_stop, on_stop=request_stop)
+    run_www(on_ready=_on_ui_ready, on_start=clear_stop, on_stop=request_stop)
