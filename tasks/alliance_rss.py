@@ -1,5 +1,5 @@
 """
-Zadanie: alliance RSS.
+Zadanie: alliance RSS — sama sekwencja UI (kryteria startu w bot/cycle).
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ _AFTER_COLLECT_DELAY = (2.0, 3.0)
 
 
 def alliance_rss() -> bool:
+    """True = zebrano. False = błąd UI."""
     if not go_to_alliance_menu():
         return False
     stop_sleep(random.uniform(*_ACTION_DELAY))

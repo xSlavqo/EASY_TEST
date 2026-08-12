@@ -28,49 +28,6 @@ from ..navigation import go_to_setting
 from ..view_detector import in_game
 from .hero import Hero
 
-_TEMPLATES_DIR = _ROOT / "templates"
-_HEROES_DIR = _TEMPLATES_DIR / "heroes"
-_MAIN_AVATAR = "main.png"
-_SWAP_AVATAR = "swap.png"
-
-_NAV_DIR = _TEMPLATES_DIR / "navigation"
-_HERO_SWAP_MENU = _NAV_DIR / "in_hero_swap_menu.png"
-_HERO_SWAP_CONFIRM = _NAV_DIR / "hero_swap_confirm.png"
-_ACC_SWAP_CONFIRM = _NAV_DIR / "acc_swap_confirm.png"
-
-# Hero swap menu — region z coord_picker (1920×1080).
-_HERO_SWAP_MENU_REGION = (51, 589, 272, 62)
-_REGION_CLICK_MARGIN = 0.15
-_SWAP_MENU_CONFIRM_TIMEOUT = 30.0
-
-# Account swap — nawigacja z hero_swap_menu (coord_picker 1920×1080).
-_ACC_SWAP_STEPS = (
-    (456, 199, 632, 60),  # step 1
-    (814, 679, 296, 30),  # step 2
-    (808, 500, 299, 28),  # step 3
-)
-# Lista kont — OCR emaila w slocie, potem klik (coord_picker 1920×1080).
-_ACC_SLOTS = (
-    (840, 552, 210, 19),  # slot 1
-    (840, 610, 212, 19),  # slot 2
-    (839, 668, 222, 20),  # slot 3
-)
-_EMAIL_ALLOWLIST = (
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@._-+"
-)
-_EMAIL_OCR_RE = re.compile(r"[a-z0-9._+-]+@[a-z0-9.-]+\.[a-z]{2,}")
-_EMAIL_OCR_RATIO = 0.82
-
-MATCH_THRESHOLD = 0.99
-_CURRENT_HERO_TIMEOUT = 60.0
-_CURRENT_HERO_POLL = 5.0
-_STEP_DELAY = (3.0, 4.7)
-_MAX_HERO_MISS = 3
-# swap.png to landmark — klikamy w prawo, we wpis bohatera obok awatara.
-_SWAP_CLICK_OFFSET_X = (150, 250)
-_SWAP_LOOKUP_TIMEOUT = 2.0
-_SWAP_CONFIRM_TIMEOUT = 30.0
-
 
 class HeroManager:
     """Bohaterowie z dysku + operacje na nich."""
@@ -102,15 +59,13 @@ class HeroManager:
     def disable_account_swap(self) -> None:
         """Wyłącz zamianę kont do ponownego uruchomienia bota."""
         self._account_swap_enabled = False
-        logger.error(
-            "account_swap wyłączony — pomijany do ponownego uruchomienia bota"
-        )
+        logger.error("account_swap wyłączony — pomijany do ponownego uruchomienia bota")
 
     def current_hero(
         self,
         *,
-        timeout: float = _CURRENT_HERO_TIMEOUT,
-        poll: float = _CURRENT_HERO_POLL,
+        timeout: float = 60.0,
+        poll: float = 5.0,
     ) -> bool:
         """
         in_game → match main.png → ustaw logged_in (hero + email konta).
@@ -130,7 +85,7 @@ class HeroManager:
                 screen = screenshot()
                 for hero in self.heroes:
                     score = match_score(screen, hero.main)
-                    if score >= MATCH_THRESHOLD:
+                    if score >= 0.99:
                         matches.append((hero, score))
             except Exception:
                 matches = []
@@ -143,13 +98,7 @@ class HeroManager:
                     for hero, score in sorted(matches, key=lambda m: -m[1])
                 ]
                 emails = sorted({hero.email for hero, _ in matches})
-                logger.error(
-                    "KOLIZJA AWATARÓW main.png — na ekranie pasuje więcej niż jeden bohater: %s. "
-                    "Konta z pokrywającymi się awatarami: %s. "
-                    "Ustaw inny main.png dla tych postaci (nie mogą wyglądać tak samo / dawać tego samego matcha).",
-                    "; ".join(labels),
-                    ", ".join(emails),
-                )
+                logger.error("KOLIZJA AWATARÓW main.png — na ekranie pasuje więcej niż jeden bohater: %s. Konta z pokrywającymi się awatarami: %s. Ustaw inny main.png dla tych postaci (nie mogą wyglądać tak samo / dawać tego samego matcha).", "; ".join(labels), ", ".join(emails))
                 request_stop()
                 return False
 
@@ -161,29 +110,16 @@ class HeroManager:
                 # TODO: sprawdź w jakim sojuszu jest hero (O / OCR nazwy) i przypisz
                 # detected.alliance = "..." albo None gdy brak sojuszu (no_ally).
                 # Na razie zostaje stałe "MZ2" z __init__.
-                logger.info(
-                    "zalogowano %s (%s) alliance=%s score=%.4f",
-                    detected.id,
-                    detected.email,
-                    detected.alliance,
-                    score,
-                )
+                logger.info("zalogowano %s (%s) alliance=%s score=%.4f", detected.id, detected.email, detected.alliance, score)
                 return True
 
             if time.monotonic() >= deadline:
                 for hero in self.heroes:
                     hero.logged_in = False
                 self._miss_streak += 1
-                logger.error(
-                    "nie wykryto bohatera (%s/%s)",
-                    self._miss_streak,
-                    _MAX_HERO_MISS,
-                )
-                if self._miss_streak >= _MAX_HERO_MISS:
-                    logger.error(
-                        "przekroczono limit %s nieudanych wykryć bohatera — zatrzymuję bota",
-                        _MAX_HERO_MISS,
-                    )
+                logger.error("nie wykryto bohatera (%s/%s)", self._miss_streak, 3)
+                if self._miss_streak >= 3:
+                    logger.error("przekroczono limit %s nieudanych wykryć bohatera — zatrzymuję bota", 3)
                     request_stop()
                 return False
 
@@ -228,8 +164,9 @@ class HeroManager:
 
         True — swap OK, None — brak kogo odwiedzić (koniec cyklu), False — błąd.
         """
-        if not _HERO_SWAP_CONFIRM.is_file():
-            logger.error("swap_hero — brak %s", _HERO_SWAP_CONFIRM)
+        confirm = _ROOT / "templates" / "navigation" / "hero_swap_confirm.png"
+        if not confirm.is_file():
+            logger.error("swap_hero — brak %s", confirm)
             return False
 
         email = self._current_email()
@@ -243,47 +180,34 @@ class HeroManager:
             if not hero.visited and hero.email == email
         ]
         if not candidates:
-            logger.info(
-                "swap_hero — brak nieodwiedzonych na %s (visited: %s)",
-                email,
-                self.visited_ids,
-            )
+            logger.info("swap_hero — brak nieodwiedzonych na %s (visited: %s)", email, self.visited_ids)
             return None
 
         if not go_to_setting():
             return False
 
-        x, y, w, h = _HERO_SWAP_MENU_REGION
-        click_region(x, y, w, h, margin=_REGION_CLICK_MARGIN)
-        stop_sleep(random.uniform(*_STEP_DELAY))
+        # Region menu hero swap (coord_picker 1920×1080).
+        click_region(51, 589, 272, 62, margin=0.15)
+        stop_sleep(random.uniform(3.0, 4.7))
 
-        if not find_on_screen(_HERO_SWAP_MENU, timeout=_SWAP_MENU_CONFIRM_TIMEOUT):
-            logger.error(
-                "nie udało się potwierdzić menu hero swap — brak in_hero_swap_menu.png po %s s",
-                _SWAP_MENU_CONFIRM_TIMEOUT,
-            )
+        menu = _ROOT / "templates" / "navigation" / "in_hero_swap_menu.png"
+        if not find_on_screen(menu, timeout=30.0):
+            logger.error("nie udało się potwierdzić menu hero swap — brak in_hero_swap_menu.png po %s s", 30.0)
             return False
 
         for hero in random.sample(candidates, len(candidates)):
             if hero.swap is None:
                 continue
 
-            if not find_and_click(
-                hero.swap,
-                timeout=_SWAP_LOOKUP_TIMEOUT,
-                offset_x=random.randint(*_SWAP_CLICK_OFFSET_X),
-            ):
+            # swap.png = landmark — klikamy w prawo, we wpis bohatera obok awatara.
+            if not find_and_click(hero.swap, timeout=2.0, offset_x=random.randint(150, 250)):
                 continue
 
-            stop_sleep(random.uniform(*_STEP_DELAY))
-            if find_and_click(_HERO_SWAP_CONFIRM, timeout=_SWAP_CONFIRM_TIMEOUT):
+            stop_sleep(random.uniform(3.0, 4.7))
+            if find_and_click(confirm, timeout=30.0):
                 return True
 
-            logger.error(
-                "swap_hero — kliknięto %s (%s), ale brak potwierdzenia",
-                hero.id,
-                hero.email,
-            )
+            logger.error("swap_hero — kliknięto %s (%s), ale brak potwierdzenia", hero.id, hero.email)
             return False
 
         remaining = [
@@ -291,12 +215,7 @@ class HeroManager:
             for hero in self.heroes
             if not hero.visited and hero.email == email
         ]
-        logger.info(
-            "swap_hero — brak widocznych nieodwiedzonych na %s (visited: %s, pozostali: %s)",
-            email,
-            self.visited_ids,
-            remaining,
-        )
+        logger.info("swap_hero — brak widocznych nieodwiedzonych na %s (visited: %s, pozostali: %s)", email, self.visited_ids, remaining)
         return False
 
     def account_swap(self) -> bool | None:
@@ -325,47 +244,45 @@ class HeroManager:
             }
         )
         if not other_emails:
-            logger.info(
-                "account_swap — brak innych kont z nieodwiedzonych (bieżące: %s)",
-                current,
-            )
+            logger.info("account_swap — brak innych kont z nieodwiedzonych (bieżące: %s)", current)
             return None
 
         if not go_to_setting():
             return False
 
-        x, y, w, h = _HERO_SWAP_MENU_REGION
-        click_region(x, y, w, h, margin=_REGION_CLICK_MARGIN)
-        stop_sleep(random.uniform(*_STEP_DELAY))
+        # Region menu hero swap (coord_picker 1920×1080).
+        click_region(51, 589, 272, 62, margin=0.15)
+        stop_sleep(random.uniform(3.0, 4.7))
 
-        if not find_on_screen(_HERO_SWAP_MENU, timeout=_SWAP_MENU_CONFIRM_TIMEOUT):
-            logger.error(
-                "account_swap — brak in_hero_swap_menu.png po %s s",
-                _SWAP_MENU_CONFIRM_TIMEOUT,
-            )
+        menu = _ROOT / "templates" / "navigation" / "in_hero_swap_menu.png"
+        if not find_on_screen(menu, timeout=30.0):
+            logger.error("account_swap — brak in_hero_swap_menu.png po %s s", 30.0)
             return False
 
-        sx, sy, sw, sh = _ACC_SWAP_STEPS[0]
-        click_region(sx, sy, sw, sh, margin=_REGION_CLICK_MARGIN)
-        stop_sleep(random.uniform(*_STEP_DELAY))
-
-        sx, sy, sw, sh = _ACC_SWAP_STEPS[1]
-        click_region(sx, sy, sw, sh, margin=_REGION_CLICK_MARGIN)
-        stop_sleep(random.uniform(*_STEP_DELAY))
-
-        sx, sy, sw, sh = _ACC_SWAP_STEPS[2]
-        click_region(sx, sy, sw, sh, margin=_REGION_CLICK_MARGIN)
+        # Kroki account swap z hero_swap_menu (coord_picker 1920×1080).
+        click_region(456, 199, 632, 60, margin=0.15)
+        stop_sleep(random.uniform(3.0, 4.7))
+        click_region(814, 679, 296, 30, margin=0.15)
+        stop_sleep(random.uniform(3.0, 4.7))
+        click_region(808, 500, 299, 28, margin=0.15)
         stop_sleep(random.uniform(0.5, 1.0))
 
         # OCR slotów → klik nieodwiedzonego emaila → START (acc_swap_confirm).
+        email_re = re.compile(r"[a-z0-9._+-]+@[a-z0-9.-]+\.[a-z]{2,}")
+        allowlist = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@._-+"
+        slots = (
+            (840, 552, 210, 19),  # slot 1
+            (840, 610, 212, 19),  # slot 2
+            (839, 668, 222, 20),  # slot 3
+        )
         target_by_key = {email.lower().replace(" ", ""): email for email in other_emails}
         targets = set(target_by_key)
         clicked_email: str | None = None
-        for slot in _ACC_SLOTS:
-            raw = (get_text(slot, _EMAIL_ALLOWLIST) or "").strip().lower().replace(" ", "")
+        for slot in slots:
+            raw = (get_text(slot, allowlist) or "").strip().lower().replace(" ", "")
             if not raw:
                 continue
-            m = _EMAIL_OCR_RE.search(raw)
+            m = email_re.search(raw)
             ocr_email = m.group(0) if m else raw
 
             matched_key: str | None = None
@@ -380,7 +297,7 @@ class HeroManager:
                 local_o, _, _ = ocr_email.partition("@")
                 if local_t and local_o:
                     ratio = max(ratio, SequenceMatcher(None, local_t, local_o).ratio())
-                if ratio >= _EMAIL_OCR_RATIO and ratio > best_ratio:
+                if ratio >= 0.82 and ratio > best_ratio:
                     best_ratio = ratio
                     matched_key = email
 
@@ -388,16 +305,13 @@ class HeroManager:
                 continue
 
             matched = target_by_key[matched_key]
-            click_region(*slot, margin=_REGION_CLICK_MARGIN)
+            click_region(*slot, margin=0.15)
             stop_sleep(random.uniform(0.5, 1.0))
             clicked_email = matched
             break
 
         if clicked_email is None:
-            logger.error(
-                "account_swap — nie znaleziono w slotach żadnego z: %s",
-                ", ".join(other_emails),
-            )
+            logger.error("account_swap — nie znaleziono w slotach żadnego z: %s", ", ".join(other_emails))
             return False
 
         # Odsuń kursor w losową krawędź — nie zasłaniał acc_swap_confirm.
@@ -415,7 +329,8 @@ class HeroManager:
             mx, my = sw - margin, random.randint(margin, max(margin, sh - margin))
         move_to(mx, my)
 
-        if not find_and_click(_ACC_SWAP_CONFIRM, timeout=_SWAP_CONFIRM_TIMEOUT):
+        confirm = _ROOT / "templates" / "navigation" / "acc_swap_confirm.png"
+        if not find_and_click(confirm, timeout=30.0):
             logger.error("account_swap — brak / nie kliknięto acc_swap_confirm.png")
             return False
 
@@ -423,25 +338,22 @@ class HeroManager:
 
 
 _heroes: list[Hero] = []
-if _HEROES_DIR.is_dir():
+_heroes_dir = _ROOT / "templates" / "heroes"
+if _heroes_dir.is_dir():
     # templates/heroes/<email>/<hero_id>/{main,swap}.png — email przypisany do main.png
-    for _account_dir in sorted(_HEROES_DIR.iterdir()):
+    for _account_dir in sorted(_heroes_dir.iterdir()):
         if not _account_dir.is_dir():
             continue
         for _hero_dir in sorted(_account_dir.iterdir()):
             if not _hero_dir.is_dir():
                 continue
-            _main = _hero_dir / _MAIN_AVATAR
+            _main = _hero_dir / "main.png"
             if not _main.is_file():
                 continue
-            _swap_path = _hero_dir / _SWAP_AVATAR
+            _swap_path = _hero_dir / "swap.png"
             _swap = _swap_path if _swap_path.is_file() else None
             if _swap is None:
-                logger.warning(
-                    "brak swap.png dla %s/%s — pomijany przy zamianie",
-                    _account_dir.name,
-                    _hero_dir.name,
-                )
+                logger.warning("brak swap.png dla %s/%s — pomijany przy zamianie", _account_dir.name, _hero_dir.name)
             _heroes.append(Hero(_account_dir.name, _hero_dir.name, _main, _swap))
 
 manager = HeroManager(_heroes)

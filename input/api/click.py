@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 
-from ..engine.mouse import click_at
+from ..engine.mouse import click_at, right_click_at
 
 _DEFAULT_MARGIN = 0.15
 
@@ -12,6 +12,11 @@ _DEFAULT_MARGIN = 0.15
 def click_point(x: int, y: int) -> None:
     """Kliknij w punkt (x, y)."""
     click_at(int(x), int(y))
+
+
+def right_click_point(x: int, y: int) -> None:
+    """Kliknij prawym przyciskiem w punkt (x, y)."""
+    right_click_at(int(x), int(y))
 
 
 def click_region(

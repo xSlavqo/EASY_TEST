@@ -17,7 +17,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from input import find_and_click
+from input import find_and_click, right_click_point
 from log import logger
 from state.stop import sleep as stop_sleep
 
@@ -32,35 +32,42 @@ _GAME_LOADED_INITIAL_DELAY = 10.0
 _MAX_GAME_WINDOWS = 2
 _MIN_WINDOW_AREA = 50_000
 _CLOSE_TIMEOUT = 30.0
+# Lekki jitter wokół środka — nie jeden stały piksel.
+_FOCUS_CENTER_JITTER = 40
 
 _CREATE_NO_WINDOW = 0x08000000
 _SW_RESTORE = 9
 
 _user32 = ctypes.windll.user32
+_kernel32 = ctypes.windll.kernel32
 
 Target = Literal["game", "launcher", "all"]
 
 
 def run_game() -> bool:
-    """Uruchom grę (lub aktywuj działającą). False = nie udało się."""
+    """Uruchom grę (lub aktywuj działającą). False = nie udało się / brak fokusu."""
     if _process_running(GAME_PROCESS):
         if len(_window_hwnds(GAME_PROCESS)) >= _MAX_GAME_WINDOWS:
             logger.warning("za dużo okien gry — zamykam i startuję od nowa")
             close_windows("all")
         else:
-            activate_window("game", attempts=8)
+            if not activate_window("game", attempts=8):
+                logger.error("nie udało się aktywować okna gry")
+                return False
             return True
 
     if not start_game():
         return False
 
     stop_sleep(_GAME_LOADED_INITIAL_DELAY)
-    activate_window("game", attempts=8)
+    if not activate_window("game", attempts=8):
+        logger.error("nie udało się aktywować okna gry po starcie")
+        return False
     return True
 
 
 def activate_window(target: Literal["game", "launcher"], *, attempts: int = 5) -> bool:
-    """Aktywuj okno gry lub launchera (WinAPI po PID)."""
+    """Aktywuj okno gry lub launchera. True tylko gdy GetForegroundWindow = HWND."""
     processes = (GAME_PROCESS,) if target == "game" else LAUNCHER_PROCESSES
     for _ in range(attempts):
         for name in processes:
@@ -68,6 +75,7 @@ def activate_window(target: Literal["game", "launcher"], *, attempts: int = 5) -
                 if _focus_hwnd(hwnd):
                     return True
         stop_sleep(random.uniform(0.25, 0.5))
+    logger.warning("nie udało się aktywować okna: %s", target)
     return False
 
 
@@ -209,15 +217,74 @@ def _window_hwnds(image_name: str) -> list[int]:
 
 
 def _focus_hwnd(hwnd: int) -> bool:
+    """Przywróć okno → SetForegroundWindow → AttachThreadInput → prawy klik w środek."""
     if not _user32.IsWindow(hwnd):
         return False
     if _user32.GetForegroundWindow() == hwnd:
         return True
-    if _user32.IsIconic(hwnd):
-        _user32.ShowWindow(hwnd, _SW_RESTORE)
+
     _user32.ShowWindow(hwnd, _SW_RESTORE)
     _user32.SetForegroundWindow(hwnd)
-    return _user32.GetForegroundWindow() == hwnd
+    if _user32.GetForegroundWindow() == hwnd:
+        return True
+
+    # Windows blokuje „kradzież” fokusu — łączenie kolejek inputu (OK przy fullscreen).
+    _steal_focus(hwnd)
+    if _user32.GetForegroundWindow() == hwnd:
+        return True
+
+    # Prawy klik w okolice środka — fokus bez LMB (mniej ryzykowne dla UI gry).
+    if _right_click_center(hwnd):
+        stop_sleep(random.uniform(0.15, 0.35))
+        _steal_focus(hwnd)
+        return _user32.GetForegroundWindow() == hwnd
+
+    return False
+
+
+def _right_click_center(hwnd: int) -> bool:
+    """Prawy klik w okolice środka okna gry (jitter, nie dokładny środek)."""
+    rect = wintypes.RECT()
+    if not _user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return False
+    left, top, right, bottom = int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
+    width, height = right - left, bottom - top
+    if width < 80 or height < 80:
+        return False
+
+    j = _FOCUS_CENTER_JITTER
+    cx = left + width // 2 + random.randint(-j, j)
+    cy = top + height // 2 + random.randint(-j, j)
+    right_click_point(cx, cy)
+    return True
+
+
+def _steal_focus(hwnd: int) -> None:
+    """Dołącz wątek do foreground + okna docelowego, potem SetForegroundWindow."""
+    fg = _user32.GetForegroundWindow()
+    cur_tid = int(_kernel32.GetCurrentThreadId())
+
+    fg_tid = wintypes.DWORD(0)
+    if fg:
+        _user32.GetWindowThreadProcessId(fg, ctypes.byref(fg_tid))
+
+    target_tid = wintypes.DWORD(0)
+    _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(target_tid))
+
+    attached_fg = False
+    attached_target = False
+    try:
+        if fg_tid.value and fg_tid.value != cur_tid:
+            attached_fg = bool(_user32.AttachThreadInput(cur_tid, fg_tid.value, True))
+        if target_tid.value and target_tid.value != cur_tid:
+            attached_target = bool(_user32.AttachThreadInput(cur_tid, target_tid.value, True))
+        _user32.BringWindowToTop(hwnd)
+        _user32.SetForegroundWindow(hwnd)
+    finally:
+        if attached_target:
+            _user32.AttachThreadInput(cur_tid, target_tid.value, False)
+        if attached_fg:
+            _user32.AttachThreadInput(cur_tid, fg_tid.value, False)
 
 
 if __name__ == "__main__":

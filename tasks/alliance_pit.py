@@ -1,16 +1,10 @@
 """
 Zadanie: centrum zasobów przymierza (alliance pit).
 
-1. _is_pit_available — menu → terytorium → klik plusa
-2. _check_alliance_pit_status — center → znajdź przycisk → _if_gather / _if_building / _if_occupied
+Cykl woła task u każdego hero (due / fala). W środku: gather/building/occupied/not_built.
 
-gather: ZBIERZ → OCR timera → schedule + fala sendów.
-building: OCR kind → fala sendów, bez schedule (lock przy kolejnym occupied).
-occupied: OCR timera → schedule, bez sendu.
-OCR timer/kind: fail → kolejny hero próbuje; sukces → dalsi pomijają OCR.
-
-main woła alliance_pit() gdy włączone — task sam sprawdza harmonogram.
-Zwraca True = nie wołaj u kolejnych hero w cyklu.
+True  → OK u tego hero (akcja albo świadomy skip).
+False → fail UI — ten hero powtarza (restart w cyklu).
 """
 
 from __future__ import annotations
@@ -26,7 +20,6 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from game import go_to_alliance_menu
-from game.hero_manager import manager
 from input import (
     click_region,
     find_and_click,
@@ -37,7 +30,7 @@ from input import (
 )
 from log import logger
 from state.keys import ALLIANCE_PIT_STATUS, TASK_ALLIANCE_PIT
-from state.schedule import is_due, schedule
+from state.schedule import schedule
 from state.stop import sleep as stop_sleep
 from state.store import INFO_PATH, save_data
 
@@ -80,6 +73,8 @@ _MATCH_THRESHOLD = 0.99
 
 PitStatus = Literal["gather", "building", "occupied"]
 PitKind = Literal["gold_pit", "wood_pit", "ore_pit", "mana_pit"]
+# Wynik wejścia w pit: jest / nie ma / nie dało się dojść UI.
+PitAvailability = Literal["built", "not_built", "nav_error"]
 
 # coord_picker 1920×1080 — konfiguracja legionu przy building (po create_legion).
 _LEGION_CONFIG_REGION: tuple[int, int, int, int] = (1220, 409, 186, 19)  # 1/3 okno konfiguracji
@@ -110,63 +105,72 @@ _wave_active = False
 _wave_kind: PitKind | None = None
 # True dopiero po udanym OCR timera/kind — fail → kolejny hero znów czyta panel.
 _ocr_done = False
+# not_built / occupied „koniec” — kolejni hero wołają task, ale od razu True bez UI.
+_skip_rest = False
+
+
+def reset_cycle_state() -> None:
+    """Wyzeruj falę/OCR/skip na start cyklu (woła bot/cycle)."""
+    global _wave_active, _wave_kind, _ocr_done, _skip_rest
+    _wave_active = False
+    _wave_kind = None
+    _ocr_done = False
+    _skip_rest = False
+
+
+def is_wave_active() -> bool:
+    """Czy trwa fala sendów — cykl: due=is_due(...) or is_wave_active()."""
+    return _wave_active
 
 
 def alliance_pit() -> bool:
     """
-    Orkiestracja pitu. Zwraca True → main pomija task u kolejnych hero.
-
-    gather/occupied: OCR timera → schedule.
-    building: OCR kind → fala bez schedule.
-    OCR (timer/kind) retry u kolejnych hero aż się uda; potem skip OCR.
+    True = OK (send / skip not_built / occupied).
+    False = fail UI — cykl robi retry u tego hero.
+    due sprawdza cykl; tu tylko _skip_rest / UI.
     """
-    global _wave_active, _wave_kind, _ocr_done
+    global _wave_active, _wave_kind, _ocr_done, _skip_rest
 
-    if not manager.visited_ids:
-        _wave_active = False
-        _wave_kind = None
-        _ocr_done = False
+    if _skip_rest:
+        return True
 
-    due = is_due(TASK_ALLIANCE_PIT)
-    if not due and not _wave_active:
-        return False
-
-    # Fala: po schedule (gather) due=False — _wave_active trzyma wejście.
     # OCR tylko gdy jeszcze nie udało się odczytać timera/kind.
     read_lock = not _ocr_done
 
     available = _is_pit_available()
-    if available is None:
-        logger.warning("alliance_pit — błąd nawigacji, spróbuję u kolejnego hero")
+    if available == "nav_error":
+        logger.warning("alliance_pit — błąd nawigacji")
         return False
-    if not available:
+    if available == "not_built":
         save_data(INFO_PATH, ALLIANCE_PIT_STATUS, "not_built")
         _wave_active = False
         _wave_kind = None
         _ocr_done = False
+        _skip_rest = True
+        logger.info("pit: not_built — skip akcji u kolejnych hero")
         return True
 
     return _check_alliance_pit_status(read_lock=read_lock)
 
 
-def _is_pit_available() -> bool | None:
+def _is_pit_available() -> PitAvailability:
     """
     Terytorium sojuszu → zakładka centrów → klik zielonego plusa.
 
     Jeśli widać collect_ally_rss (np. po alliance_rss) — pomija wejście w menu.
-    True = pit jest i plus kliknięty.
-    False = not_built (brak plusa).
-    None = błąd UI/nawigacji.
+    built = pit jest i plus kliknięty.
+    not_built = brak plusa.
+    nav_error = błąd UI/nawigacji.
     """
     # Już w terytorium (np. po zbieraniu ally RSS) — nie wchodź w menu od zera.
     if not find_on_screen(_COLLECT_ALLY_RSS, timeout=_ALLY_MENU_CHECK_TIMEOUT):
         if not go_to_alliance_menu():
-            return None
+            return "nav_error"
         stop_sleep(random.uniform(*_ACTION_DELAY))
 
         if not find_and_click(_ALLY_TERRITORY_MENU, timeout=_CLICK_TIMEOUT):
             logger.error("nie znaleziono ally_territory_menu.png")
-            return None
+            return "nav_error"
         stop_sleep(random.uniform(*_ACTION_DELAY))
 
     while find_and_click(
@@ -178,7 +182,7 @@ def _is_pit_available() -> bool | None:
 
     if not find_and_click(_PIT_TAB, timeout=_CLICK_TIMEOUT):
         logger.error("nie udało się otworzyć zakładki centrów zasobów przymierza")
-        return None
+        return "nav_error"
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
     if not find_and_click(
@@ -189,9 +193,9 @@ def _is_pit_available() -> bool | None:
             "centrum zasobów przymierza niedostępne (not_built) — skip do końca cyklu"
         )
         press_key("esc")
-        return False
+        return "not_built"
     stop_sleep(random.uniform(5.0, 7.0))
-    return True
+    return "built"
 
 
 def _check_alliance_pit_status(*, read_lock: bool) -> bool:
@@ -258,7 +262,7 @@ def _if_gather(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> bool:
     if lock_sec is not None:
         schedule(TASK_ALLIANCE_PIT, lock_sec + _LOCK_BUFFER_SEC)
     _wave_active = True
-    return False
+    return True
 
 
 def _if_building(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> bool:
@@ -314,12 +318,12 @@ def _if_building(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
     _wave_active = True
-    return False
+    return True
 
 
 def _if_occupied(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> bool:
-    """Zajęty: OCR timera → schedule + skip cyklu. Brak timera → False (kolejny hero)."""
-    global _wave_active, _wave_kind, _ocr_done
+    """Zajęty: OCR timera → schedule + skip reszty hero. Brak timera → False (retry)."""
+    global _wave_active, _wave_kind, _ocr_done, _skip_rest
 
     if read_lock:
         bx, by, _bw, _bh = btn_rect
@@ -341,5 +345,6 @@ def _if_occupied(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
 
     _wave_active = False
     _wave_kind = None
+    _skip_rest = True
     return True
 

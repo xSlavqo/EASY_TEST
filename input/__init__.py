@@ -1,6 +1,6 @@
 """Publiczne API wejścia bota."""
 
-from .api.click import click_point, click_region
+from .api.click import click_point, click_region, right_click_point
 from .api.image import (
     DEFAULT_THRESHOLD,
     find_and_click,
@@ -32,6 +32,7 @@ __all__ = [
     "locate_template",
     "match_score",
     "press_key",
+    "right_click_point",
     "screenshot",
     "search_template",
     "type_text",

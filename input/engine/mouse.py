@@ -26,6 +26,8 @@ INPUT_MOUSE = 0
 MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
+MOUSEEVENTF_RIGHTDOWN = 0x0008
+MOUSEEVENTF_RIGHTUP = 0x0010
 
 
 class MOUSEINPUT(ctypes.Structure):
@@ -64,6 +66,15 @@ def click_at(x: int, y: int) -> None:
     _send_mouse(MOUSEEVENTF_LEFTDOWN)
     time.sleep(random.uniform(0.05, 0.12))
     _send_mouse(MOUSEEVENTF_LEFTUP)
+
+
+def right_click_at(x: int, y: int) -> None:
+    """Przesuń kursor na (x, y) i kliknij prawym przyciskiem."""
+    move_to(x, y)
+    time.sleep(max(0.05, random.gauss(0.15, 0.04)))
+    _send_mouse(MOUSEEVENTF_RIGHTDOWN)
+    time.sleep(random.uniform(0.05, 0.12))
+    _send_mouse(MOUSEEVENTF_RIGHTUP)
 
 
 def move_to(target_x: int, target_y: int) -> None:

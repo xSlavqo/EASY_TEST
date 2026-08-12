@@ -24,9 +24,9 @@ from game import go_on_map
 # Ikony surowców w dolnym pasku wyszukiwania (1920×1080) — (x,y,w,h), label, key
 # Włączanie: gather_rss_gold / gather_rss_wood / gather_rss_ore w data/config.json
 _RESOURCES = (
-    ((685, 981, 123, 62), "kopalnia złota", "gold"),
-    ((866, 976, 157, 73), "obóz drwali", "wood"),
-    ((1112, 976, 134, 72), "kopalnia rudy", "ore"),
+    ((700, 996, 93, 32), "kopalnia złota", "gold"),
+    ((881, 991, 127, 43), "obóz drwali", "wood"),
+    ((1127, 991, 104, 42), "kopalnia rudy", "ore"),
 )
 _ACTION_DELAY = (0.3, 0.7)
 _ICON_CLICK_MARGIN = 0.15
