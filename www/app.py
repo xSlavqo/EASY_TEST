@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import socket
 import sys
 import threading
-import webbrowser
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
@@ -15,7 +14,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from nicegui import Client, app, ui
+from nicegui import app, ui
 
 from game.hero_manager import manager
 from log import logger
@@ -25,6 +24,40 @@ from state.settings import settings
 from state.stop import is_stopped
 from state.store import INFO_PATH, get_data
 from www.formatters import format_countdown, format_pit_status, format_pit_time
+
+
+def _lan_ips() -> list[str]:
+    """Lokalne adresy IPv4 (bez localhost) — do linku z telefonu / innego PC."""
+    ips: list[str] = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127.") and ip not in ips:
+                ips.append(ip)
+    except OSError:
+        pass
+    if not ips:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                ip = s.getsockname()[0]
+                if not ip.startswith("127."):
+                    ips.append(ip)
+        except OSError:
+            pass
+    return ips
+
+
+def _log_panel_urls(port: int) -> None:
+    """Wypisz w logu adresy, pod którymi panel jest dostępny w LAN."""
+    logger.info("panel WWW: http://127.0.0.1:%s/ (tylko ten komputer)", port)
+    try:
+        name = socket.gethostname()
+        logger.info("panel WWW: http://%s:%s/ (nazwa PC w sieci)", name, port)
+    except OSError:
+        pass
+    for ip in _lan_ips():
+        logger.info("panel WWW: http://%s:%s/ (telefon / inny PC w Wi‑Fi)", ip, port)
 
 # (klucz w config.json, etykieta w panelu)
 _CHECKS = (
@@ -74,25 +107,16 @@ def run_www(
     on_start: Callable[[], None] | None = None,
     on_stop: Callable[[], None] | None = None,
     *,
-    host: str = "127.0.0.1",
+    host: str = "0.0.0.0",
     port: int = 8080,
 ) -> None:
-    """Uruchom panel w przeglądarce (localhost)."""
+    """Uruchom panel WWW (domyślnie dostępny w sieci lokalnej, bez otwierania przeglądarki)."""
     _ensure_log_handler()
 
     if on_ready is not None:
         app.on_startup(on_ready)
 
-    panel_url = f"http://{host}:{port}/"
-
-    async def _open_browser_if_needed() -> None:
-        # Stara karta zdąży się podłączyć po restarcie — wtedy nie otwieramy drugiej.
-        await asyncio.sleep(1.5)
-        if Client.instances:
-            return
-        webbrowser.open(panel_url)
-
-    app.on_startup(_open_browser_if_needed)
+    app.on_startup(lambda: _log_panel_urls(port))
 
     @ui.page("/")
     def _index() -> None:
@@ -230,7 +254,7 @@ def run_www(
         host=host,
         port=port,
         reload=False,
-        show=False,  # własna logika: otwórz tylko gdy brak podłączonej karty
+        show=False,  # nie otwieraj przeglądarki przy starcie
         title="EASY_TEST",
         favicon="🤖",
     )
