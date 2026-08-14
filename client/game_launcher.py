@@ -47,14 +47,15 @@ Target = Literal["game", "launcher", "all"]
 
 
 def run_game() -> bool:
-    """Uruchom grę (lub aktywuj działającą). False tylko gdy nie da się odpalić procesu."""
+    """Uruchom grę i aktywuj okno. False gdy nie ma procesu albo nie ma fokusu."""
     if _process_running(GAME_PROCESS):
         if len(_window_hwnds(GAME_PROCESS)) >= _MAX_GAME_WINDOWS:
             logger.warning("za dużo okien gry — zamykam i startuję od nowa")
             close_windows("all")
         else:
             if not activate_window("game", attempts=8):
-                logger.warning("nie udało się aktywować okna gry — kontynuuję")
+                logger.error("nie udało się aktywować okna gry")
+                return False
             return True
 
     if not start_game():
@@ -62,7 +63,8 @@ def run_game() -> bool:
 
     stop_sleep(_GAME_LOADED_INITIAL_DELAY)
     if not activate_window("game", attempts=8):
-        logger.warning("nie udało się aktywować okna gry po starcie — kontynuuję")
+        logger.error("nie udało się aktywować okna gry po starcie")
+        return False
     return True
 
 

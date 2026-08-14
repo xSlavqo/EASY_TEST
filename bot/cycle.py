@@ -6,7 +6,7 @@ import random
 from collections.abc import Callable
 from typing import Any
 
-from client import activate_window, close_windows, run_game
+from client import close_windows, run_game
 from game import in_game
 from game.hero_manager import manager
 from log import logger
@@ -22,7 +22,7 @@ _CYCLE_INTERVAL_MIN_SEC = 4 * 60 * 60
 _CYCLE_INTERVAL_MAX_SEC = 5 * 60 * 60
 _ALLIANCE_COOLDOWN_SEC = 10 * 60 * 60
 
-# Odczekanie na przeładowanie konta po swapie (focus WinAPI przed current_hero).
+# Odczekanie na przeładowanie konta po swapie (potem in_game + current_hero).
 _RELOGIN_FOCUS_DELAY_SEC = 15.0
 
 # Taski zakończone u bieżącego hero (True z taska). Reset po udanym swapie.
@@ -104,7 +104,7 @@ def run_cycle() -> bool:
         # Udana zmiana postaci/konta → czyste flagi tasków u nowego hero.
         _reset_hero_task_state()
 
-        # Po swapie — czekamy na przeładowanie; focus okna przed current_hero.
+        # Po swapie — czekamy na przeładowanie; pętla wraca do in_game + current_hero.
         stop_sleep(_RELOGIN_FOCUS_DELAY_SEC)
 
     # Harmonogram kolejnego cyklu / cooldown ally RSS.
@@ -191,14 +191,14 @@ def _restart_after_task_fail() -> bool:
 
 def _ensure_current_hero() -> bool:
     """
-    Fokus okna (WinAPI, bez myszy) → wykryj zalogowanego hero (main.png).
+    in_game → wykryj zalogowanego hero (main.png).
 
     Przy failu: zamknij grę → uruchom od nowa → jedna dodatkowa próba.
     False → run_cycle kończy się failiem (main zatrzymuje bota).
     """
-    if not activate_window("game", attempts=8):
-        logger.warning("brak fokusu okna gry przed current_hero — kontynuuję")
-    if manager.current_hero():
+    if not in_game():
+        logger.warning("in_game nieudany przed current_hero")
+    elif manager.current_hero():
         return True
 
     logger.warning("current_hero nieudany — zamykam grę i próbuję raz od nowa")
@@ -208,8 +208,9 @@ def _ensure_current_hero() -> bool:
     if not run_game():
         logger.error("nie udało się uruchomić gry po failu current_hero")
         return False
-    if not activate_window("game", attempts=8):
-        logger.warning("brak fokusu okna gry po restarcie — kontynuuję")
+    if not in_game():
+        logger.error("in_game nieudany po restarcie gry")
+        return False
     if manager.current_hero():
         return True
 
