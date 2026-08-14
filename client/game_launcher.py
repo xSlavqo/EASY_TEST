@@ -17,7 +17,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from input import find_and_click, right_click_point
+from input import find_and_click
 from log import logger
 from state.stop import sleep as stop_sleep
 
@@ -32,11 +32,13 @@ _GAME_LOADED_INITIAL_DELAY = 10.0
 _MAX_GAME_WINDOWS = 2
 _MIN_WINDOW_AREA = 50_000
 _CLOSE_TIMEOUT = 30.0
-# Lekki jitter wokół środka — nie jeden stały piksel.
-_FOCUS_CENTER_JITTER = 40
 
 _CREATE_NO_WINDOW = 0x08000000
 _SW_RESTORE = 9
+_SW_SHOW = 5
+_VK_MENU = 0x12  # Alt
+_KEYEVENTF_KEYUP = 0x0002
+_ASFW_ANY = -1
 
 _user32 = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
@@ -45,15 +47,14 @@ Target = Literal["game", "launcher", "all"]
 
 
 def run_game() -> bool:
-    """Uruchom grę (lub aktywuj działającą). False = nie udało się / brak fokusu."""
+    """Uruchom grę (lub aktywuj działającą). False tylko gdy nie da się odpalić procesu."""
     if _process_running(GAME_PROCESS):
         if len(_window_hwnds(GAME_PROCESS)) >= _MAX_GAME_WINDOWS:
             logger.warning("za dużo okien gry — zamykam i startuję od nowa")
             close_windows("all")
         else:
             if not activate_window("game", attempts=8):
-                logger.error("nie udało się aktywować okna gry")
-                return False
+                logger.warning("nie udało się aktywować okna gry — kontynuuję")
             return True
 
     if not start_game():
@@ -61,8 +62,7 @@ def run_game() -> bool:
 
     stop_sleep(_GAME_LOADED_INITIAL_DELAY)
     if not activate_window("game", attempts=8):
-        logger.error("nie udało się aktywować okna gry po starcie")
-        return False
+        logger.warning("nie udało się aktywować okna gry po starcie — kontynuuję")
     return True
 
 
@@ -122,15 +122,16 @@ def start_launcher() -> bool:
 
 
 def start_game() -> bool:
-    """Aktywuj launcher → Start → poczekaj na proces gry."""
-    if not activate_window("launcher"):
+    """Aktywuj launcher (albo start z pliku) → Start → poczekaj na proces gry."""
+    launcher_up = any(_process_running(name) for name in LAUNCHER_PROCESSES)
+    if not launcher_up:
         if not start_launcher():
             logger.error("nie mogę w żaden sposób włączyć launchera")
             return False
         stop_sleep(random.uniform(0.8, 1.6))
-        if not activate_window("launcher"):
-            logger.error("nie mogę w żaden sposób włączyć launchera")
-            return False
+
+    if not activate_window("launcher", attempts=8):
+        logger.warning("nie udało się aktywować okna launchera — próbuję kliknąć Start mimo to")
 
     stop_sleep(random.uniform(0.8, 1.6))
 
@@ -216,47 +217,44 @@ def _window_hwnds(image_name: str) -> list[int]:
     return [hwnd for hwnd, _ in candidates[:_MAX_GAME_WINDOWS]]
 
 
+def _is_foreground(hwnd: int) -> bool:
+    return _user32.GetForegroundWindow() == hwnd
+
+
+def _tap_alt() -> None:
+    """Krótki Alt — Windows częściej pozwala potem na SetForegroundWindow."""
+    _user32.keybd_event(_VK_MENU, 0, 0, 0)
+    _user32.keybd_event(_VK_MENU, 0, _KEYEVENTF_KEYUP, 0)
+
+
 def _focus_hwnd(hwnd: int) -> bool:
-    """Przywróć okno → SetForegroundWindow → AttachThreadInput → prawy klik w środek."""
+    """Przywróć okno WinAPI: Restore → SetForeground → Alt → AttachThreadInput. Bez myszy."""
     if not _user32.IsWindow(hwnd):
         return False
-    if _user32.GetForegroundWindow() == hwnd:
+    if _is_foreground(hwnd):
         return True
 
     _user32.ShowWindow(hwnd, _SW_RESTORE)
+    _user32.ShowWindow(hwnd, _SW_SHOW)
+    _user32.AllowSetForegroundWindow(_ASFW_ANY)
+
     _user32.SetForegroundWindow(hwnd)
-    if _user32.GetForegroundWindow() == hwnd:
+    if _is_foreground(hwnd):
+        return True
+
+    # Alt = „input użytkownika”; po nim Windows chętniej oddaje focus.
+    _tap_alt()
+    _user32.SetForegroundWindow(hwnd)
+    if _is_foreground(hwnd):
         return True
 
     # Windows blokuje „kradzież” fokusu — łączenie kolejek inputu (OK przy fullscreen).
     _steal_focus(hwnd)
-    if _user32.GetForegroundWindow() == hwnd:
+    if _is_foreground(hwnd):
         return True
 
-    # Prawy klik w okolice środka — fokus bez LMB (mniej ryzykowne dla UI gry).
-    if _right_click_center(hwnd):
-        stop_sleep(random.uniform(0.15, 0.35))
-        _steal_focus(hwnd)
-        return _user32.GetForegroundWindow() == hwnd
-
-    return False
-
-
-def _right_click_center(hwnd: int) -> bool:
-    """Prawy klik w okolice środka okna gry (jitter, nie dokładny środek)."""
-    rect = wintypes.RECT()
-    if not _user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-        return False
-    left, top, right, bottom = int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
-    width, height = right - left, bottom - top
-    if width < 80 or height < 80:
-        return False
-
-    j = _FOCUS_CENTER_JITTER
-    cx = left + width // 2 + random.randint(-j, j)
-    cy = top + height // 2 + random.randint(-j, j)
-    right_click_point(cx, cy)
-    return True
+    _user32.SwitchToThisWindow(hwnd, True)
+    return _is_foreground(hwnd)
 
 
 def _steal_focus(hwnd: int) -> None:

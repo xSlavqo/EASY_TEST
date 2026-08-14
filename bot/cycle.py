@@ -22,7 +22,7 @@ _CYCLE_INTERVAL_MIN_SEC = 4 * 60 * 60
 _CYCLE_INTERVAL_MAX_SEC = 5 * 60 * 60
 _ALLIANCE_COOLDOWN_SEC = 10 * 60 * 60
 
-# Odczekanie na przeładowanie konta po swapie, zanim aktywujemy okno gry.
+# Odczekanie na przeładowanie konta po swapie (focus WinAPI przed current_hero).
 _RELOGIN_FOCUS_DELAY_SEC = 15.0
 
 # Taski zakończone u bieżącego hero (True z taska). Reset po udanym swapie.
@@ -104,9 +104,8 @@ def run_cycle() -> bool:
         # Udana zmiana postaci/konta → czyste flagi tasków u nowego hero.
         _reset_hero_task_state()
 
-        # Po swapie — focus okna gry.
+        # Po swapie — czekamy na przeładowanie; focus okna przed current_hero.
         stop_sleep(_RELOGIN_FOCUS_DELAY_SEC)
-        activate_window("game", attempts=8)
 
     # Harmonogram kolejnego cyklu / cooldown ally RSS.
     schedule(BOT, random.uniform(_CYCLE_INTERVAL_MIN_SEC, _CYCLE_INTERVAL_MAX_SEC))
@@ -152,7 +151,6 @@ def _run_task(
     if require_alliance is False and manager.is_in_alliance():
         return None
 
-    activate_window("game", attempts=8)
     result = fn()
     # gather_rss → (ok, marches); reszta → bool
     ok = bool(result[0]) if isinstance(result, tuple) else bool(result)
@@ -193,11 +191,13 @@ def _restart_after_task_fail() -> bool:
 
 def _ensure_current_hero() -> bool:
     """
-    Wykryj zalogowanego hero (main.png).
+    Fokus okna (WinAPI, bez myszy) → wykryj zalogowanego hero (main.png).
 
     Przy failu: zamknij grę → uruchom od nowa → jedna dodatkowa próba.
     False → run_cycle kończy się failiem (main zatrzymuje bota).
     """
+    if not activate_window("game", attempts=8):
+        logger.warning("brak fokusu okna gry przed current_hero — kontynuuję")
     if manager.current_hero():
         return True
 
@@ -208,6 +208,8 @@ def _ensure_current_hero() -> bool:
     if not run_game():
         logger.error("nie udało się uruchomić gry po failu current_hero")
         return False
+    if not activate_window("game", attempts=8):
+        logger.warning("brak fokusu okna gry po restarcie — kontynuuję")
     if manager.current_hero():
         return True
 
