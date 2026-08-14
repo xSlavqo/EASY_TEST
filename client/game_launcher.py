@@ -107,7 +107,7 @@ def close_windows(target: Target = "all", *, timeout: float = _CLOSE_TIMEOUT) ->
 
 
 def start_launcher() -> bool:
-    """Uruchom launcher.exe i poczekaj aż proces się pojawi."""
+    """Zawsze odpal launcher.exe (nawet gdy już działa — wtedy okno samo wychodzi na wierzch)."""
     if not LAUNCHER_PATH.is_file():
         return False
 
@@ -122,16 +122,10 @@ def start_launcher() -> bool:
 
 
 def start_game() -> bool:
-    """Aktywuj launcher (albo start z pliku) → Start → poczekaj na proces gry."""
-    launcher_up = any(_process_running(name) for name in LAUNCHER_PROCESSES)
-    if not launcher_up:
-        if not start_launcher():
-            logger.error("nie mogę w żaden sposób włączyć launchera")
-            return False
-        stop_sleep(random.uniform(0.8, 1.6))
-
-    if not activate_window("launcher", attempts=8):
-        logger.warning("nie udało się aktywować okna launchera — próbuję kliknąć Start mimo to")
+    """Start launchera z pliku → Start → poczekaj na proces gry."""
+    if not start_launcher():
+        logger.error("nie mogę w żaden sposób włączyć launchera")
+        return False
 
     stop_sleep(random.uniform(0.8, 1.6))
 
