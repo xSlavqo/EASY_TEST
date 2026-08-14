@@ -51,26 +51,14 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
     Gdy oba pasują naraz, wybierz widok z wyższym score.
     Zwraca GameView.UNKNOWN po wyczerpaniu prób.
     """
-    logger.info("detect_view START max_attempts=%s", max_attempts)
     last_city = last_map = 0.0
     # Esc / spacja idą do okna z fokusem — bez tego klawisz trafia w panel bota.
-    logger.info("detect_view → activate_window(game) [przed pętlą]")
     activate_window("game")
-    logger.info("detect_view ← activate_window(game) [przed pętlą]")
     for attempt in range(max_attempts):
-        logger.info("detect_view próba %s/%s → screenshot + match", attempt + 1, max_attempts)
         screen = screenshot()
         city_score = max(match_score(screen, t) for t in IN_CITY_TEMPLATES)
         map_score = max(match_score(screen, t) for t in ON_MAP_TEMPLATES)
         last_city, last_map = city_score, map_score
-        logger.info(
-            "detect_view próba %s/%s city=%.3f map=%.3f (próg=%.2f)",
-            attempt + 1,
-            max_attempts,
-            city_score,
-            map_score,
-            _DETECT_THRESHOLD,
-        )
 
         city_ok = city_score >= _DETECT_THRESHOLD
         map_ok = map_score >= _DETECT_THRESHOLD
@@ -84,10 +72,13 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
             view = None
 
         if view is not None:
-            logger.info("detect_view widok=%s — sprawdzam setting_button", view.value)
             # Ustawienia otwarte nad miastem/mapą — zamknij Esc i potwierdź widok jeszcze raz.
             if match_score(screen, SETTING_BUTTON_TEMPLATE) >= _DETECT_THRESHOLD:
-                logger.info("detect_view — setting_button widoczny, Esc")
+                logger.warning(
+                    "detect_view — setting_button otwarty, Esc (próba %s/%s)",
+                    attempt + 1,
+                    max_attempts,
+                )
                 if attempt < max_attempts - 1:
                     activate_window("game")
                     press_key("esc")
@@ -100,11 +91,16 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
                     map_score,
                 )
                 return GameView.UNKNOWN
-            logger.info("detect_view OK = %s", view.value)
             return view
 
         if attempt < max_attempts - 1:
-            logger.info("detect_view — brak widoku, Esc i retry")
+            logger.warning(
+                "detect_view — brak miasta/mapy city=%.3f map=%.3f, Esc (próba %s/%s)",
+                city_score,
+                map_score,
+                attempt + 1,
+                max_attempts,
+            )
             activate_window("game")
             press_key("esc")
             stop_sleep(random.uniform(*_UI_SETTLE_DELAY))
@@ -120,11 +116,7 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
 
 def in_game() -> bool:
     """Czy jesteśmy w świecie gry (miasto LUB mapa). Zamyka też ustawienia (setting_button)."""
-    logger.info("in_game START → detect_view()")
-    view = detect_view()
-    ok = view is not GameView.UNKNOWN
-    logger.info("in_game ← detect_view()=%s → %s", view.value, ok)
-    return ok
+    return detect_view() is not GameView.UNKNOWN
 
 
 def go_to_city() -> bool:

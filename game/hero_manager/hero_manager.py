@@ -28,8 +28,9 @@ from ..navigation import go_to_setting
 from ..view_detector import in_game
 from .hero import Hero
 
-# Brak matcha main.png → in_game (Esc/overlay) → znowu awatary. Max rund.
-_CURRENT_HERO_ROUNDS = 3
+# Runda 1: tylko awatary (in_game zrobił caller). Brak → 10 s + in_game + awatary. Max 5.
+_CURRENT_HERO_ROUNDS = 5
+_CURRENT_HERO_RETRY_DELAY_SEC = 10.0
 _AVATAR_MATCH_THRESHOLD = 0.99
 
 
@@ -72,32 +73,33 @@ class HeroManager:
         poll: float = 5.0,
     ) -> bool:
         """
-        in_game → match main.png → ustaw logged_in.
+        Match main.png → ustaw logged_in.
 
-        Brak awatara → znowu in_game (zamyka popup/ustawienia) → znowu match.
-        Max _CURRENT_HERO_ROUNDS rund. Kolizja ≥2 main.png → stop bota.
+        Runda 1: tylko awatary (in_game już zrobił caller, np. _ensure_current_hero).
+        Brak awatara → 10 s → in_game → znowu awatary. Max 5 rund (~40+ s pauz).
+        Kolizja ≥2 main.png → stop bota.
         """
-        # timeout/poll zostawione w sygnaturze — stare wywołania; logika to rundy in_game.
         _ = timeout, poll
-        logger.info(
-            "current_hero START rundy=%s heroes=%s",
-            _CURRENT_HERO_ROUNDS,
-            len(self.heroes),
-        )
 
         for round_n in range(1, _CURRENT_HERO_ROUNDS + 1):
             check_stop()
-            logger.info("current_hero runda %s/%s → in_game()", round_n, _CURRENT_HERO_ROUNDS)
-            if not in_game():
-                logger.error(
-                    "current_hero — in_game nieudany (runda %s/%s)",
+
+            if round_n > 1:
+                logger.warning(
+                    "current_hero — brak awatara, czekam %.0f s i in_game (runda %s/%s)",
+                    _CURRENT_HERO_RETRY_DELAY_SEC,
                     round_n,
                     _CURRENT_HERO_ROUNDS,
                 )
-                # Brak świata gry — kolejna runda i tak zacznie od in_game.
-                continue
+                stop_sleep(_CURRENT_HERO_RETRY_DELAY_SEC)
+                if not in_game():
+                    logger.warning(
+                        "current_hero — in_game nieudany (runda %s/%s)",
+                        round_n,
+                        _CURRENT_HERO_ROUNDS,
+                    )
+                    continue
 
-            logger.info("current_hero runda %s/%s → match main.png", round_n, _CURRENT_HERO_ROUNDS)
             matches: list[tuple[Hero, float]] = []
             try:
                 screen = screenshot()
@@ -105,18 +107,9 @@ class HeroManager:
                     score = match_score(screen, hero.main)
                     if score >= _AVATAR_MATCH_THRESHOLD:
                         matches.append((hero, score))
-                        logger.info(
-                            "current_hero runda %s HIT %s/%s score=%.4f",
-                            round_n,
-                            hero.email,
-                            hero.id,
-                            score,
-                        )
             except Exception as exc:
                 matches = []
-                logger.info("current_hero runda %s wyjątek przy matchu: %s", round_n, exc)
-
-            logger.info("current_hero runda %s matches=%s", round_n, len(matches))
+                logger.warning("current_hero — wyjątek przy matchu (runda %s): %s", round_n, exc)
 
             if len(matches) > 1:
                 for hero in self.heroes:
@@ -151,15 +144,14 @@ class HeroManager:
                     detected.alliance,
                     score,
                 )
-                logger.info("current_hero OK (runda %s)", round_n)
                 return True
 
-            # Brak awatarów → kolejna runda zaczyna się od in_game (Esc/overlay w detect_view).
-            logger.info(
-                "current_hero runda %s/%s — brak awatarów → następna runda od in_game",
-                round_n,
-                _CURRENT_HERO_ROUNDS,
-            )
+            if round_n < _CURRENT_HERO_ROUNDS:
+                logger.warning(
+                    "current_hero — brak awatarów (runda %s/%s)",
+                    round_n,
+                    _CURRENT_HERO_ROUNDS,
+                )
 
         for hero in self.heroes:
             hero.logged_in = False
@@ -171,7 +163,6 @@ class HeroManager:
                 3,
             )
             request_stop()
-        logger.info("current_hero FAIL — brak awatara po %s rundach", _CURRENT_HERO_ROUNDS)
         return False
 
     def hero_visited(self) -> None:
