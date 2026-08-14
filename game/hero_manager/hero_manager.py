@@ -28,6 +28,10 @@ from ..navigation import go_to_setting
 from ..view_detector import in_game
 from .hero import Hero
 
+# Brak matcha main.png → in_game (Esc/overlay) → znowu awatary. Max rund.
+_CURRENT_HERO_ROUNDS = 3
+_AVATAR_MATCH_THRESHOLD = 0.99
+
 
 class HeroManager:
     """Bohaterowie z dysku + operacje na nich."""
@@ -68,48 +72,51 @@ class HeroManager:
         poll: float = 5.0,
     ) -> bool:
         """
-        in_game → match main.png → ustaw logged_in (hero + email konta).
+        in_game → match main.png → ustaw logged_in.
 
-        Jeśli ≥2 main.png trafiają próg — kolizja awatarów (np. różne konta),
-        błąd + stop bota (trzeba zmienić obrazek).
+        Brak awatara → znowu in_game (zamyka popup/ustawienia) → znowu match.
+        Max _CURRENT_HERO_ROUNDS rund. Kolizja ≥2 main.png → stop bota.
         """
+        # timeout/poll zostawione w sygnaturze — stare wywołania; logika to rundy in_game.
+        _ = timeout, poll
         logger.info(
-            "current_hero START timeout=%s poll=%s heroes=%s",
-            timeout,
-            poll,
+            "current_hero START rundy=%s heroes=%s",
+            _CURRENT_HERO_ROUNDS,
             len(self.heroes),
         )
-        logger.info("current_hero → in_game() [wewnętrzne sprawdzenie]")
-        if not in_game():
-            logger.error("current_hero — nie jesteśmy w grze (in_game)")
-            return False
-        logger.info("current_hero ← in_game() OK — matchuję main.png")
 
-        deadline = time.monotonic() + timeout
-        poll_n = 0
-        while True:
-            poll_n += 1
+        for round_n in range(1, _CURRENT_HERO_ROUNDS + 1):
             check_stop()
+            logger.info("current_hero runda %s/%s → in_game()", round_n, _CURRENT_HERO_ROUNDS)
+            if not in_game():
+                logger.error(
+                    "current_hero — in_game nieudany (runda %s/%s)",
+                    round_n,
+                    _CURRENT_HERO_ROUNDS,
+                )
+                # Brak świata gry — kolejna runda i tak zacznie od in_game.
+                continue
+
+            logger.info("current_hero runda %s/%s → match main.png", round_n, _CURRENT_HERO_ROUNDS)
             matches: list[tuple[Hero, float]] = []
             try:
-                logger.info("current_hero poll #%s → screenshot + match_score", poll_n)
                 screen = screenshot()
                 for hero in self.heroes:
                     score = match_score(screen, hero.main)
-                    if score >= 0.99:
+                    if score >= _AVATAR_MATCH_THRESHOLD:
                         matches.append((hero, score))
                         logger.info(
-                            "current_hero poll #%s HIT %s/%s score=%.4f",
-                            poll_n,
+                            "current_hero runda %s HIT %s/%s score=%.4f",
+                            round_n,
                             hero.email,
                             hero.id,
                             score,
                         )
             except Exception as exc:
                 matches = []
-                logger.info("current_hero poll #%s wyjątek przy matchu: %s", poll_n, exc)
+                logger.info("current_hero runda %s wyjątek przy matchu: %s", round_n, exc)
 
-            logger.info("current_hero poll #%s matches=%s", poll_n, len(matches))
+            logger.info("current_hero runda %s matches=%s", round_n, len(matches))
 
             if len(matches) > 1:
                 for hero in self.heroes:
@@ -119,7 +126,13 @@ class HeroManager:
                     for hero, score in sorted(matches, key=lambda m: -m[1])
                 ]
                 emails = sorted({hero.email for hero, _ in matches})
-                logger.error("KOLIZJA AWATARÓW main.png — na ekranie pasuje więcej niż jeden bohater: %s. Konta z pokrywającymi się awatarami: %s. Ustaw inny main.png dla tych postaci (nie mogą wyglądać tak samo / dawać tego samego matcha).", "; ".join(labels), ", ".join(emails))
+                logger.error(
+                    "KOLIZJA AWATARÓW main.png — na ekranie pasuje więcej niż jeden bohater: %s. "
+                    "Konta z pokrywającymi się awatarami: %s. Ustaw inny main.png dla tych postaci "
+                    "(nie mogą wyglądać tak samo / dawać tego samego matcha).",
+                    "; ".join(labels),
+                    ", ".join(emails),
+                )
                 request_stop()
                 return False
 
@@ -131,29 +144,35 @@ class HeroManager:
                 # TODO: sprawdź w jakim sojuszu jest hero (O / OCR nazwy) i przypisz
                 # detected.alliance = "..." albo None gdy brak sojuszu (no_ally).
                 # Na razie zostaje stałe "MZ2" z __init__.
-                logger.info("zalogowano %s (%s) alliance=%s score=%.4f", detected.id, detected.email, detected.alliance, score)
-                logger.info("current_hero OK")
+                logger.info(
+                    "zalogowano %s (%s) alliance=%s score=%.4f",
+                    detected.id,
+                    detected.email,
+                    detected.alliance,
+                    score,
+                )
+                logger.info("current_hero OK (runda %s)", round_n)
                 return True
 
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                for hero in self.heroes:
-                    hero.logged_in = False
-                self._miss_streak += 1
-                logger.error("nie wykryto bohatera (%s/%s)", self._miss_streak, 3)
-                if self._miss_streak >= 3:
-                    logger.error("przekroczono limit %s nieudanych wykryć bohatera — zatrzymuję bota", 3)
-                    request_stop()
-                logger.info("current_hero FAIL — timeout")
-                return False
-
+            # Brak awatarów → kolejna runda zaczyna się od in_game (Esc/overlay w detect_view).
             logger.info(
-                "current_hero poll #%s brak dopasowania — sleep %.1f s (zostało ~%.0f s)",
-                poll_n,
-                poll,
-                remaining,
+                "current_hero runda %s/%s — brak awatarów → następna runda od in_game",
+                round_n,
+                _CURRENT_HERO_ROUNDS,
             )
-            stop_sleep(poll)
+
+        for hero in self.heroes:
+            hero.logged_in = False
+        self._miss_streak += 1
+        logger.error("nie wykryto bohatera (%s/%s)", self._miss_streak, 3)
+        if self._miss_streak >= 3:
+            logger.error(
+                "przekroczono limit %s nieudanych wykryć bohatera — zatrzymuję bota",
+                3,
+            )
+            request_stop()
+        logger.info("current_hero FAIL — brak awatara po %s rundach", _CURRENT_HERO_ROUNDS)
+        return False
 
     def hero_visited(self) -> None:
         """Oznacz zalogowanego bohatera jako odwiedzonego (+ zapis do info.json)."""
