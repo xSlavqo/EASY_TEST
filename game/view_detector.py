@@ -13,6 +13,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from client import activate_window
 from input import match_score, press_key, screenshot
 from log import logger
 from state.stop import sleep as stop_sleep
@@ -51,6 +52,8 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
     Zwraca GameView.UNKNOWN po wyczerpaniu prób.
     """
     last_city = last_map = 0.0
+    # Esc / spacja idą do okna z fokusem — bez tego klawisz trafia w panel bota.
+    activate_window("game")
     for attempt in range(max_attempts):
         screen = screenshot()
         city_score = max(match_score(screen, t) for t in IN_CITY_TEMPLATES)
@@ -72,6 +75,7 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
             # Ustawienia otwarte nad miastem/mapą — zamknij Esc i potwierdź widok jeszcze raz.
             if match_score(screen, SETTING_BUTTON_TEMPLATE) >= _DETECT_THRESHOLD:
                 if attempt < max_attempts - 1:
+                    activate_window("game")
                     press_key("esc")
                     stop_sleep(random.uniform(*_UI_SETTLE_DELAY))
                     continue
@@ -85,6 +89,7 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
             return view
 
         if attempt < max_attempts - 1:
+            activate_window("game")
             press_key("esc")
             stop_sleep(random.uniform(*_UI_SETTLE_DELAY))
 

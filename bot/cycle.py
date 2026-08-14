@@ -6,7 +6,7 @@ import random
 from collections.abc import Callable
 from typing import Any
 
-from client import close_windows, run_game
+from client import activate_window, close_windows, run_game
 from game import in_game
 from game.hero_manager import manager
 from log import logger
@@ -104,8 +104,10 @@ def run_cycle() -> bool:
         # Udana zmiana postaci/konta → czyste flagi tasków u nowego hero.
         _reset_hero_task_state()
 
-        # Po swapie — czekamy na przeładowanie; pętla wraca do in_game + current_hero.
+        # Po swapie — czekamy na przeładowanie, potem fokus; pętla → in_game + current_hero.
         stop_sleep(_RELOGIN_FOCUS_DELAY_SEC)
+        if not activate_window("game"):
+            logger.warning("nie udało się aktywować okna gry po swapie")
 
     # Harmonogram kolejnego cyklu / cooldown ally RSS.
     schedule(BOT, random.uniform(_CYCLE_INTERVAL_MIN_SEC, _CYCLE_INTERVAL_MAX_SEC))
@@ -196,6 +198,8 @@ def _ensure_current_hero() -> bool:
     Przy failu: zamknij grę → uruchom od nowa → jedna dodatkowa próba.
     False → run_cycle kończy się failiem (main zatrzymuje bota).
     """
+    if not activate_window("game"):
+        logger.warning("nie udało się aktywować okna gry przed current_hero")
     if not in_game():
         logger.warning("in_game nieudany przed current_hero")
     elif manager.current_hero():

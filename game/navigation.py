@@ -10,6 +10,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from client import activate_window
 from input import find_and_click, find_on_screen, press_key
 from log import logger
 from state.stop import sleep as stop_sleep
@@ -44,6 +45,7 @@ def go_to_alliance_menu() -> bool:
         logger.error("nie jesteśmy w grze — nie można otworzyć menu sojuszu")
         return False
 
+    activate_window("game")
     press_key("o")
 
     if not find_on_screen(_ALLY_TERRITORY_MENU, timeout=_ALLY_MENU_CHECK_TIMEOUT):
@@ -60,6 +62,7 @@ def go_to_setting() -> bool:
     Zwraca True, gdy przycisk został znaleziony i kliknięty.
     """
     for _ in range(_MAX_ATTEMPTS):
+        activate_window("game")
         press_key("esc")
         stop_sleep(random.uniform(*_ESC_SETTLE_DELAY))
 

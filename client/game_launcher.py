@@ -43,6 +43,23 @@ _ASFW_ANY = -1
 _user32 = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
 
+# HWND na 64-bit musi iść jako wskaźnik, nie jako 32-bit int.
+_user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+_user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+_user32.GetForegroundWindow.restype = wintypes.HWND
+_user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+_user32.SetForegroundWindow.restype = wintypes.BOOL
+_user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+_user32.AttachThreadInput.restype = wintypes.BOOL
+_user32.IsIconic.argtypes = [wintypes.HWND]
+_user32.IsIconic.restype = wintypes.BOOL
+_user32.IsWindow.argtypes = [wintypes.HWND]
+_user32.IsWindow.restype = wintypes.BOOL
+_user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+_user32.ShowWindow.restype = wintypes.BOOL
+_user32.BringWindowToTop.argtypes = [wintypes.HWND]
+_user32.BringWindowToTop.restype = wintypes.BOOL
+
 Target = Literal["game", "launcher", "all"]
 
 
@@ -213,8 +230,27 @@ def _window_hwnds(image_name: str) -> list[int]:
     return [hwnd for hwnd, _ in candidates[:_MAX_GAME_WINDOWS]]
 
 
+def _window_tid_pid(hwnd: int) -> tuple[int, int]:
+    """
+    (thread_id, process_id) okna.
+
+    GetWindowThreadProcessId: wartość zwrotna = wątek, DWORD pod wskaźnikiem = proces.
+    """
+    pid = wintypes.DWORD(0)
+    tid = int(_user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid)))
+    return tid, int(pid.value)
+
+
 def _is_foreground(hwnd: int) -> bool:
-    return _user32.GetForegroundWindow() == hwnd
+    """True gdy fokus ma to okno albo inne okno tego samego procesu (np. pop-up)."""
+    fg = _user32.GetForegroundWindow()
+    if not fg:
+        return False
+    if int(fg) == int(hwnd):
+        return True
+    _, pid_fg = _window_tid_pid(int(fg))
+    _, pid_target = _window_tid_pid(hwnd)
+    return bool(pid_fg) and pid_fg == pid_target
 
 
 def _tap_alt() -> None:
@@ -224,14 +260,17 @@ def _tap_alt() -> None:
 
 
 def _focus_hwnd(hwnd: int) -> bool:
-    """Przywróć okno WinAPI: Restore → SetForeground → Alt → AttachThreadInput. Bez myszy."""
+    """Przywróć okno WinAPI: Show → SetForeground → Alt → AttachThreadInput. Bez myszy."""
     if not _user32.IsWindow(hwnd):
         return False
     if _is_foreground(hwnd):
         return True
 
-    _user32.ShowWindow(hwnd, _SW_RESTORE)
-    _user32.ShowWindow(hwnd, _SW_SHOW)
+    # Restore tylko gdy zminimalizowane — na fullscreenie psuje tryb okna.
+    if _user32.IsIconic(hwnd):
+        _user32.ShowWindow(hwnd, _SW_RESTORE)
+    else:
+        _user32.ShowWindow(hwnd, _SW_SHOW)
     _user32.AllowSetForegroundWindow(_ASFW_ANY)
 
     _user32.SetForegroundWindow(hwnd)
@@ -254,31 +293,29 @@ def _focus_hwnd(hwnd: int) -> bool:
 
 
 def _steal_focus(hwnd: int) -> None:
-    """Dołącz wątek do foreground + okna docelowego, potem SetForegroundWindow."""
+    """Dołącz wątek bota do wątku okna z fokusem i okna gry, potem SetForegroundWindow."""
     fg = _user32.GetForegroundWindow()
     cur_tid = int(_kernel32.GetCurrentThreadId())
 
-    fg_tid = wintypes.DWORD(0)
+    fg_tid = 0
     if fg:
-        _user32.GetWindowThreadProcessId(fg, ctypes.byref(fg_tid))
-
-    target_tid = wintypes.DWORD(0)
-    _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(target_tid))
+        fg_tid, _ = _window_tid_pid(int(fg))
+    target_tid, _ = _window_tid_pid(hwnd)
 
     attached_fg = False
     attached_target = False
     try:
-        if fg_tid.value and fg_tid.value != cur_tid:
-            attached_fg = bool(_user32.AttachThreadInput(cur_tid, fg_tid.value, True))
-        if target_tid.value and target_tid.value != cur_tid:
-            attached_target = bool(_user32.AttachThreadInput(cur_tid, target_tid.value, True))
+        if fg_tid and fg_tid != cur_tid:
+            attached_fg = bool(_user32.AttachThreadInput(cur_tid, fg_tid, True))
+        if target_tid and target_tid != cur_tid:
+            attached_target = bool(_user32.AttachThreadInput(cur_tid, target_tid, True))
         _user32.BringWindowToTop(hwnd)
         _user32.SetForegroundWindow(hwnd)
     finally:
         if attached_target:
-            _user32.AttachThreadInput(cur_tid, target_tid.value, False)
+            _user32.AttachThreadInput(cur_tid, target_tid, False)
         if attached_fg:
-            _user32.AttachThreadInput(cur_tid, fg_tid.value, False)
+            _user32.AttachThreadInput(cur_tid, fg_tid, False)
 
 
 if __name__ == "__main__":
