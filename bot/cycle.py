@@ -33,15 +33,31 @@ _task_fail_restarts = 0
 
 def run_cycle() -> bool:
     """Jeden cykl: uruchom grę → RSS na każdym bohaterze → zamknij grę."""
-    if not run_game():
+    logger.info("run_cycle START")
+    logger.info("run_cycle → wołam run_game()")
+    ok_game = run_game()
+    logger.info("run_cycle ← run_game() = %s", ok_game)
+    if not ok_game:
+        logger.info("run_cycle FAIL — run_game nieudany")
         return False
 
+    logger.info("run_cycle → reset_cycle_state()")
     reset_cycle_state()
+    logger.info("run_cycle ← reset_cycle_state() OK")
+    logger.info("run_cycle → _reset_hero_task_state()")
     _reset_hero_task_state()
+    logger.info("run_cycle ← _reset_hero_task_state() OK")
 
+    loop_n = 0
     while True:
-        if not _ensure_current_hero():
+        loop_n += 1
+        logger.info("run_cycle pętla #%s → _ensure_current_hero()", loop_n)
+        ok_hero = _ensure_current_hero()
+        logger.info("run_cycle pętla #%s ← _ensure_current_hero() = %s", loop_n, ok_hero)
+        if not ok_hero:
+            logger.info("run_cycle FAIL — _ensure_current_hero nieudany")
             return False
+        logger.info("run_cycle pętla #%s — current_hero OK, lecę dalej (taski/swap)", loop_n)
 
         # Już visited (np. po restarcie po failu swapu) — pomiń taski, od razu swap.
         if not manager.is_visited():
@@ -198,24 +214,48 @@ def _ensure_current_hero() -> bool:
     Przy failu: zamknij grę → uruchom od nowa → jedna dodatkowa próba.
     False → run_cycle kończy się failiem (main zatrzymuje bota).
     """
-    if not activate_window("game"):
+    logger.info("_ensure_current_hero START")
+    logger.info("_ensure_current_hero → activate_window(game)")
+    focus_ok = activate_window("game")
+    logger.info("_ensure_current_hero ← activate_window(game) = %s", focus_ok)
+    if not focus_ok:
         logger.warning("nie udało się aktywować okna gry przed current_hero")
-    if not in_game():
+
+    logger.info("_ensure_current_hero → in_game() [1. próba]")
+    ok_in = in_game()
+    logger.info("_ensure_current_hero ← in_game() [1. próba] = %s", ok_in)
+    if not ok_in:
         logger.warning("in_game nieudany przed current_hero")
-    elif manager.current_hero():
-        return True
+    else:
+        logger.info("_ensure_current_hero → manager.current_hero() [1. próba]")
+        ok_cur = manager.current_hero()
+        logger.info("_ensure_current_hero ← manager.current_hero() [1. próba] = %s", ok_cur)
+        if ok_cur:
+            logger.info("_ensure_current_hero OK (1. próba)")
+            return True
 
     logger.warning("current_hero nieudany — zamykam grę i próbuję raz od nowa")
+    logger.info("_ensure_current_hero → close_windows(game)")
     if not close_windows("game"):
         logger.error("nie udało się zamknąć gry po failu current_hero")
         return False
+    logger.info("_ensure_current_hero ← close_windows(game) OK")
+
+    logger.info("_ensure_current_hero → run_game() [restart]")
     if not run_game():
         logger.error("nie udało się uruchomić gry po failu current_hero")
         return False
+    logger.info("_ensure_current_hero ← run_game() [restart] OK")
+
+    logger.info("_ensure_current_hero → in_game() [2. próba po restarcie]")
     if not in_game():
         logger.error("in_game nieudany po restarcie gry")
         return False
+    logger.info("_ensure_current_hero ← in_game() [2. próba] OK")
+
+    logger.info("_ensure_current_hero → manager.current_hero() [2. próba]")
     if manager.current_hero():
+        logger.info("_ensure_current_hero OK (2. próba po restarcie)")
         return True
 
     logger.error("current_hero nieudany po restarcie gry")

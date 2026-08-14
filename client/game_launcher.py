@@ -65,35 +65,64 @@ Target = Literal["game", "launcher", "all"]
 
 def run_game() -> bool:
     """Uruchom grę i aktywuj okno. False gdy nie ma procesu albo nie ma fokusu."""
-    if _process_running(GAME_PROCESS):
-        if len(_window_hwnds(GAME_PROCESS)) >= _MAX_GAME_WINDOWS:
+    logger.info("run_game START")
+    logger.info("run_game → sprawdzam proces %s", GAME_PROCESS)
+    running = _process_running(GAME_PROCESS)
+    logger.info("run_game ← proces działa = %s", running)
+
+    if running:
+        logger.info("run_game → liczę okna gry (_window_hwnds)")
+        hwnds = _window_hwnds(GAME_PROCESS)
+        logger.info("run_game ← okien gry = %s (hwnds=%s)", len(hwnds), hwnds)
+        if len(hwnds) >= _MAX_GAME_WINDOWS:
             logger.warning("za dużo okien gry — zamykam i startuję od nowa")
+            logger.info("run_game → close_windows(all)")
             close_windows("all")
+            logger.info("run_game ← close_windows(all) gotowe")
         else:
+            logger.info("run_game → activate_window(game, attempts=8) [proces już działa]")
             if not activate_window("game", attempts=8):
                 logger.error("nie udało się aktywować okna gry")
                 return False
+            logger.info("run_game OK — gra już działała, fokus OK")
             return True
 
+    logger.info("run_game → start_game() [pełny start]")
     if not start_game():
+        logger.info("run_game FAIL — start_game nieudany")
         return False
+    logger.info("run_game ← start_game() OK")
 
+    logger.info("run_game → sleep %s s (ładowanie po starcie)", _GAME_LOADED_INITIAL_DELAY)
     stop_sleep(_GAME_LOADED_INITIAL_DELAY)
+    logger.info("run_game ← sleep po starcie skończony")
+
+    logger.info("run_game → activate_window(game, attempts=8) [po starcie]")
     if not activate_window("game", attempts=8):
         logger.error("nie udało się aktywować okna gry po starcie")
         return False
+    logger.info("run_game OK — start + fokus")
     return True
 
 
 def activate_window(target: Literal["game", "launcher"], *, attempts: int = 5) -> bool:
     """Aktywuj okno gry lub launchera. True tylko gdy GetForegroundWindow = HWND."""
+    logger.info("activate_window START target=%s attempts=%s", target, attempts)
     processes = (GAME_PROCESS,) if target == "game" else LAUNCHER_PROCESSES
-    for _ in range(attempts):
+    for attempt in range(attempts):
+        logger.info("activate_window próba %s/%s", attempt + 1, attempts)
         for name in processes:
-            for hwnd in _window_hwnds(name):
+            hwnds = _window_hwnds(name)
+            logger.info("activate_window proces=%s hwnds=%s", name, hwnds)
+            for hwnd in hwnds:
+                logger.info("activate_window → _focus_hwnd(%s)", hwnd)
                 if _focus_hwnd(hwnd):
+                    logger.info("activate_window OK hwnd=%s", hwnd)
                     return True
-        stop_sleep(random.uniform(0.25, 0.5))
+                logger.info("activate_window ← _focus_hwnd(%s) = False", hwnd)
+        pause = random.uniform(0.25, 0.5)
+        logger.info("activate_window sleep %.2f s przed kolejną próbą", pause)
+        stop_sleep(pause)
     logger.warning("nie udało się aktywować okna: %s", target)
     return False
 
@@ -142,21 +171,36 @@ def start_launcher() -> bool:
 
 def start_game() -> bool:
     """Start launchera z pliku → Start → poczekaj na proces gry."""
+    logger.info("start_game START")
+    logger.info("start_game → start_launcher()")
     if not start_launcher():
         logger.error("nie mogę w żaden sposób włączyć launchera")
         return False
+    logger.info("start_game ← start_launcher() OK")
 
-    stop_sleep(random.uniform(0.8, 1.6))
+    pause = random.uniform(0.8, 1.6)
+    logger.info("start_game sleep %.2f s przed kliknięciem Start", pause)
+    stop_sleep(pause)
 
+    logger.info(
+        "start_game → find_and_click(%s, timeout=%s)",
+        START_BUTTON_TEMPLATE,
+        _START_CLICK_TIMEOUT,
+    )
     if not find_and_click(START_BUTTON_TEMPLATE, timeout=_START_CLICK_TIMEOUT):
         logger.error("nie udało się kliknąć Start w launcherze")
         return False
+    logger.info("start_game ← kliknięto Start")
 
-    stop_sleep(random.uniform(1.0, 2.0))
+    pause = random.uniform(1.0, 2.0)
+    logger.info("start_game sleep %.2f s po Start", pause)
+    stop_sleep(pause)
 
+    logger.info("start_game → czekam na proces %s (max %s s)", GAME_PROCESS, _PROCESS_WAIT_TIMEOUT)
     deadline = time.monotonic() + _PROCESS_WAIT_TIMEOUT
     while time.monotonic() < deadline:
         if _process_running(GAME_PROCESS):
+            logger.info("start_game OK — proces gry jest")
             return True
         stop_sleep(random.uniform(0.5, 1.2))
 
@@ -261,35 +305,49 @@ def _tap_alt() -> None:
 
 def _focus_hwnd(hwnd: int) -> bool:
     """Przywróć okno WinAPI: Show → SetForeground → Alt → AttachThreadInput. Bez myszy."""
+    logger.info("_focus_hwnd START hwnd=%s", hwnd)
     if not _user32.IsWindow(hwnd):
+        logger.info("_focus_hwnd FAIL — IsWindow=False")
         return False
     if _is_foreground(hwnd):
+        logger.info("_focus_hwnd OK — już na wierzchu")
         return True
 
     # Restore tylko gdy zminimalizowane — na fullscreenie psuje tryb okna.
     if _user32.IsIconic(hwnd):
+        logger.info("_focus_hwnd → ShowWindow(RESTORE) — zminimalizowane")
         _user32.ShowWindow(hwnd, _SW_RESTORE)
     else:
+        logger.info("_focus_hwnd → ShowWindow(SHOW)")
         _user32.ShowWindow(hwnd, _SW_SHOW)
     _user32.AllowSetForegroundWindow(_ASFW_ANY)
 
+    logger.info("_focus_hwnd → SetForegroundWindow (1)")
     _user32.SetForegroundWindow(hwnd)
     if _is_foreground(hwnd):
+        logger.info("_focus_hwnd OK po SetForegroundWindow")
         return True
 
     # Alt = „input użytkownika”; po nim Windows chętniej oddaje focus.
+    logger.info("_focus_hwnd → Alt + SetForegroundWindow (2)")
     _tap_alt()
     _user32.SetForegroundWindow(hwnd)
     if _is_foreground(hwnd):
+        logger.info("_focus_hwnd OK po Alt")
         return True
 
     # Windows blokuje „kradzież” fokusu — łączenie kolejek inputu (OK przy fullscreen).
+    logger.info("_focus_hwnd → _steal_focus")
     _steal_focus(hwnd)
     if _is_foreground(hwnd):
+        logger.info("_focus_hwnd OK po _steal_focus")
         return True
 
+    logger.info("_focus_hwnd → SwitchToThisWindow")
     _user32.SwitchToThisWindow(hwnd, True)
-    return _is_foreground(hwnd)
+    ok = _is_foreground(hwnd)
+    logger.info("_focus_hwnd END = %s", ok)
+    return ok
 
 
 def _steal_focus(hwnd: int) -> None:

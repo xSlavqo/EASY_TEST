@@ -73,22 +73,43 @@ class HeroManager:
         Jeśli ≥2 main.png trafiają próg — kolizja awatarów (np. różne konta),
         błąd + stop bota (trzeba zmienić obrazek).
         """
+        logger.info(
+            "current_hero START timeout=%s poll=%s heroes=%s",
+            timeout,
+            poll,
+            len(self.heroes),
+        )
+        logger.info("current_hero → in_game() [wewnętrzne sprawdzenie]")
         if not in_game():
             logger.error("current_hero — nie jesteśmy w grze (in_game)")
             return False
+        logger.info("current_hero ← in_game() OK — matchuję main.png")
 
         deadline = time.monotonic() + timeout
+        poll_n = 0
         while True:
+            poll_n += 1
             check_stop()
             matches: list[tuple[Hero, float]] = []
             try:
+                logger.info("current_hero poll #%s → screenshot + match_score", poll_n)
                 screen = screenshot()
                 for hero in self.heroes:
                     score = match_score(screen, hero.main)
                     if score >= 0.99:
                         matches.append((hero, score))
-            except Exception:
+                        logger.info(
+                            "current_hero poll #%s HIT %s/%s score=%.4f",
+                            poll_n,
+                            hero.email,
+                            hero.id,
+                            score,
+                        )
+            except Exception as exc:
                 matches = []
+                logger.info("current_hero poll #%s wyjątek przy matchu: %s", poll_n, exc)
+
+            logger.info("current_hero poll #%s matches=%s", poll_n, len(matches))
 
             if len(matches) > 1:
                 for hero in self.heroes:
@@ -111,9 +132,11 @@ class HeroManager:
                 # detected.alliance = "..." albo None gdy brak sojuszu (no_ally).
                 # Na razie zostaje stałe "MZ2" z __init__.
                 logger.info("zalogowano %s (%s) alliance=%s score=%.4f", detected.id, detected.email, detected.alliance, score)
+                logger.info("current_hero OK")
                 return True
 
-            if time.monotonic() >= deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 for hero in self.heroes:
                     hero.logged_in = False
                 self._miss_streak += 1
@@ -121,8 +144,15 @@ class HeroManager:
                 if self._miss_streak >= 3:
                     logger.error("przekroczono limit %s nieudanych wykryć bohatera — zatrzymuję bota", 3)
                     request_stop()
+                logger.info("current_hero FAIL — timeout")
                 return False
 
+            logger.info(
+                "current_hero poll #%s brak dopasowania — sleep %.1f s (zostało ~%.0f s)",
+                poll_n,
+                poll,
+                remaining,
+            )
             stop_sleep(poll)
 
     def hero_visited(self) -> None:
