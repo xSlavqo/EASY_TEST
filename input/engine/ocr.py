@@ -43,3 +43,7 @@ def read_text_from_image(roi_bgr: np.ndarray, allowlist: str) -> str | None:
     results = reader.readtext(processed, allowlist=allowlist, detail=0)
     text = "".join(results).strip() if results else ""
     return text or None
+
+
+# Przy imporcie — błąd torch/DLL wychodzi na starcie, nie w środku cyklu.
+_get_reader()
