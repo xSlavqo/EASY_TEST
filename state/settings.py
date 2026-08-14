@@ -19,6 +19,7 @@ _DEFAULTS: dict[str, Any] = {
     "gather_rss_gold": True,
     "gather_rss_wood": True,
     "gather_rss_ore": True,
+    "gather_rss_level": 8,
 }
 
 

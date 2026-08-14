@@ -70,6 +70,9 @@ _CHECKS = (
     ("gather_rss_ore", "RSS: ruda"),
 )
 
+_GATHER_RSS_LEVEL_MIN = 1
+_GATHER_RSS_LEVEL_MAX = 10
+
 # Logi z wątku bota → historia; każda karta przeglądarki dogania nowe linie.
 _LOG_LOCK = threading.Lock()
 _LOG_ENTRIES: deque[tuple[int, str]] = deque(maxlen=800)
@@ -249,6 +252,28 @@ def run_www(
                         value=bool(getattr(settings, key)),
                         on_change=_on_toggle,
                     )
+
+                with ui.row().classes("items-center gap-2 flex-wrap mt-2"):
+                    ui.label("RSS: poziom")
+
+                    def _on_level(e) -> None:
+                        try:
+                            level = int(e.value)
+                        except (TypeError, ValueError):
+                            return
+                        level = max(
+                            _GATHER_RSS_LEVEL_MIN,
+                            min(_GATHER_RSS_LEVEL_MAX, level),
+                        )
+                        settings.gather_rss_level = level
+
+                    ui.number(
+                        value=int(settings.gather_rss_level),
+                        min=_GATHER_RSS_LEVEL_MIN,
+                        max=_GATHER_RSS_LEVEL_MAX,
+                        step=1,
+                        on_change=_on_level,
+                    ).props("dense outlined").classes("w-24")
 
     ui.run(
         host=host,
