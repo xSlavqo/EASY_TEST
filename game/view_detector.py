@@ -30,6 +30,8 @@ _MAX_SWITCH_ATTEMPTS = 3
 # Losowe pauzy — jak w game_launcher (uniform między min a max).
 _UI_LOAD_DELAY = (1.0, 2.0)  # po spacji — ładowanie widoku miasto/map
 _UI_SETTLE_DELAY = (1.0, 2.0)  # po Esc — zamknięcie overlay / powrót UI
+# Pierwsze trafienie miasta/mapy → pauza → drugie sprawdzenie (potwierdzenie).
+_VIEW_CONFIRM_DELAY = (2.0, 3.0)
 
 
 class GameView(Enum):
@@ -44,12 +46,38 @@ def switch_view() -> None:
     stop_sleep(random.uniform(*_UI_LOAD_DELAY))
 
 
+def _score_view(screen) -> tuple[GameView | None, float, float]:
+    """
+    Odczytaj widok z jednego screenshota.
+    Zwraca (view|None, city_score, map_score). None = brak miasta/mapy.
+    """
+    city_score = max(match_score(screen, t) for t in IN_CITY_TEMPLATES)
+    map_score = max(match_score(screen, t) for t in ON_MAP_TEMPLATES)
+
+    city_ok = city_score >= _DETECT_THRESHOLD
+    map_ok = map_score >= _DETECT_THRESHOLD
+    if city_ok and not map_ok:
+        view: GameView | None = GameView.CITY
+    elif map_ok and not city_ok:
+        view = GameView.MAP
+    elif city_ok and map_ok and city_score != map_score:
+        view = GameView.CITY if city_score > map_score else GameView.MAP
+    else:
+        view = None
+    return view, city_score, map_score
+
+
+def _settings_open(screen) -> bool:
+    return match_score(screen, SETTING_BUTTON_TEMPLATE) >= _DETECT_THRESHOLD
+
+
 def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
     """
     Określ, czy gra pokazuje widok miasta czy mapy.
 
     Gdy brak miasta/mapy: najpierw znane popupy (dismiss_popups), potem Esc.
     Gdy miasto/mapa pasuje, ale widać setting_button — Esc i weryfikacja ponownie.
+    Gdy widok pasuje (bez ustawień): poczekaj 2–3 s i potwierdź drugim sprawdzeniem.
     Gdy oba pasują naraz, wybierz widok z wyższym score.
     Zwraca GameView.UNKNOWN po wyczerpaniu prób.
     """
@@ -58,24 +86,12 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
     activate_window("game")
     for attempt in range(max_attempts):
         screen = screenshot()
-        city_score = max(match_score(screen, t) for t in IN_CITY_TEMPLATES)
-        map_score = max(match_score(screen, t) for t in ON_MAP_TEMPLATES)
+        view, city_score, map_score = _score_view(screen)
         last_city, last_map = city_score, map_score
-
-        city_ok = city_score >= _DETECT_THRESHOLD
-        map_ok = map_score >= _DETECT_THRESHOLD
-        if city_ok and not map_ok:
-            view = GameView.CITY
-        elif map_ok and not city_ok:
-            view = GameView.MAP
-        elif city_ok and map_ok and city_score != map_score:
-            view = GameView.CITY if city_score > map_score else GameView.MAP
-        else:
-            view = None
 
         if view is not None:
             # Ustawienia otwarte nad miastem/mapą — zamknij Esc i potwierdź widok jeszcze raz.
-            if match_score(screen, SETTING_BUTTON_TEMPLATE) >= _DETECT_THRESHOLD:
+            if _settings_open(screen):
                 logger.warning(
                     "detect_view — setting_button otwarty, Esc (próba %s/%s)",
                     attempt + 1,
@@ -93,7 +109,26 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
                     map_score,
                 )
                 return GameView.UNKNOWN
-            return view
+
+            # Pierwsze trafienie — poczekaj i sprawdź drugi raz (popup mógł tylko mignąć).
+            confirm_wait = random.uniform(*_VIEW_CONFIRM_DELAY)
+            stop_sleep(confirm_wait)
+            screen2 = screenshot()
+            view2, _, _ = _score_view(screen2)
+            if view2 is view and not _settings_open(screen2):
+                return view
+
+            logger.warning(
+                "detect_view — brak potwierdzenia widoku %s po %.1fs (próba %s/%s)",
+                view.value,
+                confirm_wait,
+                attempt + 1,
+                max_attempts,
+            )
+            if attempt >= max_attempts - 1:
+                break
+            # Dalej ta sama ścieżka co przy braku widoku: popup → Esc.
+            # (nie return — wpadamy w blok poniżej)
 
         if attempt < max_attempts - 1:
             # Najpierw znane X — Esc nie zawsze zamyka custom popup.
@@ -128,17 +163,17 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
 
 
 def in_game() -> bool:
-    """Czy jesteśmy w świecie gry (miasto LUB mapa). Zamyka popupy i ustawienia."""
+    """Czy jesteśmy w świecie gry (miasto LUB mapa), potwierdzone po ~2–3 s. Zamyka popupy i ustawienia."""
     return detect_view() is not GameView.UNKNOWN
 
 
 def go_to_city() -> bool:
-    """Przejdź do widoku miasta. Zwraca True, gdy miasto jest aktywne (bez ustawień)."""
+    """Przejdź do widoku miasta. True = miasto aktywne i potwierdzone (bez ustawień)."""
     return _ensure_view(GameView.CITY)
 
 
 def go_on_map() -> bool:
-    """Przejdź do widoku mapy. Zwraca True, gdy mapa jest aktywna (bez ustawień)."""
+    """Przejdź do widoku mapy. True = mapa aktywna i potwierdzona (bez ustawień)."""
     return _ensure_view(GameView.MAP)
 
 

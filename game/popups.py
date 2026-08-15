@@ -25,6 +25,7 @@ _POPUPS_DIR = _ROOT / "templates" / "popups"
 # Szablon = to, w co klikamy (np. czerwone X).
 _POPUPS: tuple[tuple[Path, str], ...] = (
     (_POPUPS_DIR / "popup1.png", "popup1"),
+    (_POPUPS_DIR / "popup2.png", "popup2"),
 )
 
 _SEARCH_TIMEOUT = 1.5

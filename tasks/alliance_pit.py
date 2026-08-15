@@ -46,13 +46,14 @@ _PIT_OCCUPIED = _ALLIANCE_DIR / "pit_occupied.png"
 _PIT_SEND = _ALLIANCE_DIR / "pit_send.png"
 _RSS_CREATE_LEGION = _ROOT / "templates" / "rss" / "rss_create_legion.png"
 _LEGION_START = _ROOT / "templates" / "rss" / "legion_start.png"
+_BACK_BUTTON = _ROOT / "templates" / "navigation" / "back_button.png"
 
 # Mały rozrzut wokół środka mapy (pit po kliknięciu plusa).
 _PIT_CENTER_REGION = (940, 520, 40, 40)
-# OCR panelu względem lewego-górnego rogu przycisku (BUDUJ/WYŚWIETL) — building/occupied.
+# OCR panelu względem lewego-górnego rogu przycisku BUDUJ — building.
 # coord_picker: btn (548,715,166,57) → panel (460,457,344,346)
 _OCR_PANEL_OFFSET = (-88, -258, 344, 346)  # dx, dy, w, h
-# gather: timer po kliknięciu ZBIERZ (coord_picker 1920×1080).
+# gather/occupied: timer po kliknięciu ZBIERZ/WYŚWIETL (coord_picker 1920×1080).
 _GATHER_TIMER_REGION = (647, 450, 149, 35)
 _OCR_ALLOWLIST = (
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -317,18 +318,17 @@ def _if_building(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
 
 
 def _if_occupied(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> bool:
-    """Zajęty: OCR timera → schedule + skip reszty hero. Brak timera → False (retry)."""
+    """Zajęty: WYŚWIETL → OCR timera → wstecz → schedule + skip reszty hero."""
     global _wave_active, _wave_kind, _ocr_done, _skip_rest
 
-    if read_lock:
-        bx, by, _bw, _bh = btn_rect
-        pdx, pdy, pw, ph = _OCR_PANEL_OFFSET
-        panel_region = (bx + pdx, by + pdy, pw, ph)
-        panel_raw = (get_text(panel_region, _OCR_ALLOWLIST) or "").strip()
+    click_region(*btn_rect)
+    stop_sleep(random.uniform(*_ACTION_DELAY))
 
-        match = _TIMER_RE.search(panel_raw)
+    if read_lock:
+        timer_raw = (get_text(_GATHER_TIMER_REGION, _TIMER_ALLOWLIST) or "").strip()
+        match = _TIMER_RE.search(timer_raw)
         if match is None:
-            logger.warning("OCR pitu — brak timera: %r", panel_raw[:120])
+            logger.warning("OCR pitu — brak timera: %r", timer_raw[:120])
             return False
 
         h, m, s = int(match.group(1)), int(match.group(2)), int(match.group(3))
@@ -336,6 +336,11 @@ def _if_occupied(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
         schedule(TASK_ALLIANCE_PIT, lock_sec + _LOCK_BUFFER_SEC)
         save_data(INFO_PATH, ALLIANCE_PIT_STATUS, "occupied")
         _ocr_done = True
+
+    if not find_and_click(_BACK_BUTTON, timeout=_CLICK_TIMEOUT):
+        logger.warning("nie znaleziono back_button.png — Escape")
+        press_key("esc")
+    stop_sleep(random.uniform(*_ACTION_DELAY))
 
     _wave_active = False
     _wave_kind = None
