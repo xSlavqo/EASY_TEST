@@ -53,7 +53,6 @@ def scount_sentry_post() -> bool:
             continue
 
         # Brak try1/try2 i brak popupu → koniec (próby wyczerpane / panel pusty).
-        logger.info("scount_sentry_post — brak przycisków i popupu, koniec")
         return True
 
 
@@ -69,7 +68,6 @@ def _ssp_entry() -> bool:
     sentry_enter = ssp_dir / "ssp_enter.png"
 
     if find_on_screen(in_ssp, timeout=1.5):
-        logger.info("ssp_entry — już w SSP, pomijam wejście")
         return True
 
     if not go_to_city():
@@ -81,18 +79,16 @@ def _ssp_entry() -> bool:
     thresholds = [1.0 - 0.02 * i for i in range(4)]
     for threshold in thresholds:
         check_stop()
-        logger.info("ssp_entry — szukam ssp_enter (próg %.2f, 3 s)", threshold)
         if not find_and_click(sentry_enter, timeout=3.0, threshold=threshold):
             continue
 
         stop_sleep(random.uniform(3.0, 4.7))
         if find_on_screen(in_ssp, timeout=3.0):
-            logger.info("ssp_entry — potwierdzono in_ssp (próg %.2f)", threshold)
             return True
 
-        # Kliknięto, ale nie weszliśmy — nie stopuj bota, tylko ping na Discord.
-        logger.warning(
-            "@everyone ssp_entry — brak in_ssp po kliknięciu ssp_enter "
+        # Kliknięto, ale nie weszliśmy — soft-skip + screen (error) na Discord.
+        logger.error(
+            "ssp_entry — brak in_ssp po kliknięciu ssp_enter "
             "(próg %.2f) na %s — pomijam SSP",
             threshold,
             _logged_in_hero_label(),
@@ -125,5 +121,4 @@ def _ssp_popup_close() -> bool:
     popup_close_btn = (1514, 259, 34, 30)
     click_region(*popup_close_btn)
     stop_sleep(random.uniform(0.5, 1.0))
-    logger.info("ssp_popup_close — zamknięto popup sklepu")
     return True

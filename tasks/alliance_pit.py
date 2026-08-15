@@ -147,7 +147,7 @@ def alliance_pit() -> bool:
         _wave_kind = None
         _ocr_done = False
         _skip_rest = True
-        logger.info("pit: not_built — skip akcji u kolejnych hero")
+        logger.warning("pit: not_built — skip akcji u kolejnych hero")
         return True
 
     return _check_alliance_pit_status(read_lock=read_lock)
@@ -189,9 +189,6 @@ def _is_pit_available() -> PitAvailability:
         _RSS_PIT_AVAILABLE,
         timeout=random.uniform(*_PIT_AVAILABLE_TIMEOUT),
     ):
-        logger.info(
-            "centrum zasobów przymierza niedostępne (not_built) — skip do końca cyklu"
-        )
         press_key("esc")
         return "not_built"
     stop_sleep(random.uniform(5.0, 7.0))
@@ -240,7 +237,6 @@ def _if_gather(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> bool:
         else:
             h, m, s = int(match.group(1)), int(match.group(2)), int(match.group(3))
             lock_sec = float(h * 3600 + m * 60 + s)
-            logger.info("pit: gather → lock %.0f s", lock_sec)
             _ocr_done = True
         save_data(INFO_PATH, ALLIANCE_PIT_STATUS, "gather")
 
@@ -286,7 +282,6 @@ def _if_building(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
         if kind is None:
             logger.warning("OCR pitu — nieznany rodzaj: %r", panel_raw[:120])
         else:
-            logger.info("pit: building → rodzaj=%s (schedule przy occupied)", kind)
             _wave_kind = kind
             _ocr_done = True
 
@@ -338,7 +333,6 @@ def _if_occupied(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
 
         h, m, s = int(match.group(1)), int(match.group(2)), int(match.group(3))
         lock_sec = float(h * 3600 + m * 60 + s)
-        logger.info("pit: occupied → lock %.0f s", lock_sec)
         schedule(TASK_ALLIANCE_PIT, lock_sec + _LOCK_BUFFER_SEC)
         save_data(INFO_PATH, ALLIANCE_PIT_STATUS, "occupied")
         _ocr_done = True
