@@ -24,18 +24,24 @@ from tasks.alliance_rss import alliance_rss
 from tasks.gather_rss import gather_rss
 from tasks.scount_sentry_post import scount_sentry_post
 
-_CYCLE_INTERVAL_MIN_SEC = 4 * 60 * 60
-_CYCLE_INTERVAL_MAX_SEC = 5 * 60 * 60
-_ALLIANCE_COOLDOWN_SEC = 10 * 60 * 60
-_SSP_COOLDOWN_SEC = 14 * 60 * 60
-
-# Odczekanie na przeładowanie konta po swapie (potem in_game + current_hero).
-_RELOGIN_FOCUS_DELAY_SEC = 15.0
-
 # Taski zakończone u bieżącego hero (True z taska). Reset po udanym swapie.
 _done_tasks: set[str] = set()
 # Ile razy w tej sesji hero restartowaliśmy grę po failu taska (max 1).
 _task_fail_restarts = 0
+
+
+def _hours_to_sec(hours: float) -> float:
+    """Godziny z ustawień → sekundy do schedule()."""
+    return max(0.0, float(hours)) * 3600.0
+
+
+def _cycle_wait_sec() -> float:
+    """Losowy czas do następnego cyklu (min–max z panelu, w sekundach)."""
+    lo = _hours_to_sec(settings.cycle_interval_min_h)
+    hi = _hours_to_sec(settings.cycle_interval_max_h)
+    if hi < lo:
+        lo, hi = hi, lo
+    return random.uniform(lo, hi)
 
 
 def run_cycle() -> bool:
@@ -91,7 +97,7 @@ def run_cycle() -> bool:
                     return False
                 continue
             if ssp is True and ssp_id is not None:
-                schedule(ssp_id, _SSP_COOLDOWN_SEC)
+                schedule(ssp_id, _hours_to_sec(settings.ssp_cooldown_h))
 
             gather = _run_task(
                 "gather_rss",
@@ -128,19 +134,20 @@ def run_cycle() -> bool:
         _reset_hero_task_state()
 
         # Po swapie — czekamy na przeładowanie, potem fokus; pętla → in_game + current_hero.
-        stop_sleep(_RELOGIN_FOCUS_DELAY_SEC)
+        stop_sleep(float(settings.relogin_focus_delay_sec))
         if not activate_window("game"):
             logger.warning("nie udało się aktywować okna gry po swapie")
 
-    # Harmonogram kolejnego cyklu / cooldown ally RSS.
-    schedule(BOT, random.uniform(_CYCLE_INTERVAL_MIN_SEC, _CYCLE_INTERVAL_MAX_SEC))
+    # Harmonogram kolejnego cyklu / cooldown ally RSS (wartości z panelu WWW).
+    schedule(BOT, _cycle_wait_sec())
     if settings.alliance_rss_enabled and is_due(TASK_ALLIANCE_RSS):
-        schedule(TASK_ALLIANCE_RSS, _ALLIANCE_COOLDOWN_SEC)
+        schedule(TASK_ALLIANCE_RSS, _hours_to_sec(settings.alliance_rss_cooldown_h))
 
     # Opcjonalne zamknięcie gry po cyklu.
     if settings.close_game_after_cycle:
-        logger.info("cykl OK — zamknięcie gry za 30 s")
-        stop_sleep(30)
+        delay = float(settings.close_game_delay_sec)
+        logger.info("cykl OK — zamknięcie gry za %.0f s", delay)
+        stop_sleep(delay)
         if not close_windows("game"):
             logger.error("nie udało się zamknąć gry")
             return False

@@ -21,6 +21,14 @@ _DEFAULTS: dict[str, Any] = {
     "gather_rss_wood": True,
     "gather_rss_ore": True,
     "gather_rss_level": 8,
+    # Harmonogram (godziny) — cykl bota i cooldowny tasków.
+    "cycle_interval_min_h": 4.0,
+    "cycle_interval_max_h": 5.0,
+    "alliance_rss_cooldown_h": 10.0,
+    "ssp_cooldown_h": 14.0,
+    # Opóźnienia (sekundy) po swapie konta / przed zamknięciem gry.
+    "relogin_focus_delay_sec": 15.0,
+    "close_game_delay_sec": 30.0,
 }
 
 

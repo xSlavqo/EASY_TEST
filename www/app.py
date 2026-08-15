@@ -105,6 +105,30 @@ _CHECKS = (
 _GATHER_RSS_LEVEL_MIN = 1
 _GATHER_RSS_LEVEL_MAX = 10
 
+# Limity pól liczbowych w panelu (godziny / sekundy).
+_HOURS_MIN = 0.1
+_HOURS_MAX = 168.0  # tydzień
+_DELAY_SEC_MIN = 0.0
+_DELAY_SEC_MAX = 600.0
+
+
+def _save_float_setting(key: str, raw: object, *, lo: float, hi: float) -> None:
+    """Zapisz liczbę z pola UI do settings (z ograniczeniem zakresu)."""
+    try:
+        value = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return
+    setattr(settings, key, max(lo, min(hi, value)))
+
+
+def _clamp_cycle_interval_pair() -> None:
+    """Upewnij się, że min cyklu ≤ max (po edycji jednego z pól)."""
+    lo = float(settings.cycle_interval_min_h)
+    hi = float(settings.cycle_interval_max_h)
+    if hi < lo:
+        settings.cycle_interval_max_h = lo
+
+
 # Logi z wątku bota → historia; każda karta przeglądarki dogania nowe linie.
 _LOG_LOCK = threading.Lock()
 _LOG_ENTRIES: deque[tuple[int, str]] = deque(maxlen=800)
@@ -160,11 +184,14 @@ def run_www(
         ui.colors(primary="#2563eb")
         ui.query("body").classes("bg-[#2d2d2d]")
 
-        # 1) Status+logi  2) Ustawienia
+        # PC: status+logi | ustawienia  ·  telefon: kolumna pod kolumną
         with ui.row().classes(
-            "w-full h-screen p-4 gap-4 items-stretch flex-nowrap bg-[#2d2d2d]"
+            "w-full min-h-screen p-4 gap-4 items-stretch flex-col "
+            "md:flex-row md:flex-nowrap md:h-screen bg-[#2d2d2d]"
         ):
-            with ui.column().classes("flex-grow min-w-0 h-full gap-4"):
+            with ui.column().classes(
+                "w-full flex-grow min-w-0 gap-4 md:h-full"
+            ):
                 # ── Status (lewo góra) ────────────────────────────────────
                 with ui.card().classes("w-full bg-[#383838]"):
                     ui.label("Status").classes("text-subtitle1")
@@ -251,11 +278,12 @@ def run_www(
 
                 # ── Logi (lewo, pod statusem) ─────────────────────────────
                 with ui.card().classes(
-                    "w-full flex-grow flex flex-col min-h-0 bg-[#383838]"
+                    "w-full flex flex-col min-h-64 "
+                    "md:flex-grow md:min-h-0 bg-[#383838]"
                 ):
                     ui.label("Logi").classes("text-subtitle1")
                     log_view = ui.log(max_lines=500).classes(
-                        "w-full flex-grow min-h-64"
+                        "w-full flex-grow min-h-64 md:min-h-0"
                     )
 
                     last_seq = 0
@@ -280,9 +308,9 @@ def run_www(
 
                     ui.timer(0.2, _drain_logs)
 
-            # ── Ustawienia (środek) ───────────────────────────────────────
+            # ── Ustawienia (PC: prawo, telefon: pod spodem) ───────────────
             with ui.card().classes(
-                "w-80 shrink-0 h-full overflow-auto bg-[#383838]"
+                "w-full md:w-96 shrink-0 md:h-full overflow-auto bg-[#383838]"
             ):
                 ui.label("Ustawienia").classes("text-subtitle1")
                 for key, label in _CHECKS:
@@ -316,6 +344,128 @@ def run_www(
                         max=_GATHER_RSS_LEVEL_MAX,
                         step=1,
                         on_change=_on_level,
+                    ).props("dense outlined").classes("w-24")
+
+                # Harmonogram — godziny (bot czyta przy następnym schedule).
+                ui.separator().classes("my-3")
+                ui.label("Harmonogram").classes("text-subtitle2")
+
+                def _on_cycle_min(e) -> None:
+                    _save_float_setting(
+                        "cycle_interval_min_h",
+                        e.value,
+                        lo=_HOURS_MIN,
+                        hi=_HOURS_MAX,
+                    )
+                    _clamp_cycle_interval_pair()
+
+                def _on_cycle_max(e) -> None:
+                    _save_float_setting(
+                        "cycle_interval_max_h",
+                        e.value,
+                        lo=_HOURS_MIN,
+                        hi=_HOURS_MAX,
+                    )
+                    _clamp_cycle_interval_pair()
+
+                with ui.row().classes("items-center gap-2 flex-wrap"):
+                    ui.label("cykl min (h)")
+                    ui.number(
+                        value=float(settings.cycle_interval_min_h),
+                        min=_HOURS_MIN,
+                        max=_HOURS_MAX,
+                        step=0.5,
+                        on_change=_on_cycle_min,
+                    ).props("dense outlined").classes("w-24")
+
+                with ui.row().classes("items-center gap-2 flex-wrap"):
+                    ui.label("cykl max (h)")
+                    ui.number(
+                        value=float(settings.cycle_interval_max_h),
+                        min=_HOURS_MIN,
+                        max=_HOURS_MAX,
+                        step=0.5,
+                        on_change=_on_cycle_max,
+                    ).props("dense outlined").classes("w-24")
+
+                with ui.row().classes("items-center gap-2 flex-wrap"):
+                    ui.label("cooldown ally RSS (h)")
+
+                    def _on_ally_cd(e) -> None:
+                        _save_float_setting(
+                            "alliance_rss_cooldown_h",
+                            e.value,
+                            lo=_HOURS_MIN,
+                            hi=_HOURS_MAX,
+                        )
+
+                    ui.number(
+                        value=float(settings.alliance_rss_cooldown_h),
+                        min=_HOURS_MIN,
+                        max=_HOURS_MAX,
+                        step=0.5,
+                        on_change=_on_ally_cd,
+                    ).props("dense outlined").classes("w-24")
+
+                with ui.row().classes("items-center gap-2 flex-wrap"):
+                    ui.label("cooldown SSP (h)")
+
+                    def _on_ssp_cd(e) -> None:
+                        _save_float_setting(
+                            "ssp_cooldown_h",
+                            e.value,
+                            lo=_HOURS_MIN,
+                            hi=_HOURS_MAX,
+                        )
+
+                    ui.number(
+                        value=float(settings.ssp_cooldown_h),
+                        min=_HOURS_MIN,
+                        max=_HOURS_MAX,
+                        step=0.5,
+                        on_change=_on_ssp_cd,
+                    ).props("dense outlined").classes("w-24")
+
+                # Opóźnienia krótkie — sekundy.
+                ui.separator().classes("my-3")
+                ui.label("Opóźnienia").classes("text-subtitle2")
+
+                with ui.row().classes("items-center gap-2 flex-wrap"):
+                    ui.label("po swapie konta (s)")
+
+                    def _on_relogin(e) -> None:
+                        _save_float_setting(
+                            "relogin_focus_delay_sec",
+                            e.value,
+                            lo=_DELAY_SEC_MIN,
+                            hi=_DELAY_SEC_MAX,
+                        )
+
+                    ui.number(
+                        value=float(settings.relogin_focus_delay_sec),
+                        min=_DELAY_SEC_MIN,
+                        max=_DELAY_SEC_MAX,
+                        step=1,
+                        on_change=_on_relogin,
+                    ).props("dense outlined").classes("w-24")
+
+                with ui.row().classes("items-center gap-2 flex-wrap"):
+                    ui.label("przed zamknięciem gry (s)")
+
+                    def _on_close_delay(e) -> None:
+                        _save_float_setting(
+                            "close_game_delay_sec",
+                            e.value,
+                            lo=_DELAY_SEC_MIN,
+                            hi=_DELAY_SEC_MAX,
+                        )
+
+                    ui.number(
+                        value=float(settings.close_game_delay_sec),
+                        min=_DELAY_SEC_MIN,
+                        max=_DELAY_SEC_MAX,
+                        step=1,
+                        on_change=_on_close_delay,
                     ).props("dense outlined").classes("w-24")
 
     ui.run(
