@@ -77,7 +77,8 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
 
     Gdy brak miasta/mapy: najpierw znane popupy (dismiss_popups), potem Esc.
     Gdy miasto/mapa pasuje, ale widać setting_button — Esc i weryfikacja ponownie.
-    Gdy widok pasuje (bez ustawień): poczekaj 2–3 s i potwierdź drugim sprawdzeniem.
+    Gdy widok pasuje (bez ustawień): poczekaj 2–3 s i potwierdź drugim sprawdzeniem;
+    w trakcie potwierdzenia zamykane są wyskakujące popupy.
     Gdy oba pasują naraz, wybierz widok z wyższym score.
     Zwraca GameView.UNKNOWN po wyczerpaniu prób.
     """
@@ -110,9 +111,29 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
                 )
                 return GameView.UNKNOWN
 
-            # Pierwsze trafienie — poczekaj i sprawdź drugi raz (popup mógł tylko mignąć).
+            # Pierwsze trafienie — poczekaj i potwierdź; w trakcie mogą wyskoczyć popupy.
             confirm_wait = random.uniform(*_VIEW_CONFIRM_DELAY)
-            stop_sleep(confirm_wait)
+            popped_during_confirm = False
+            elapsed = 0.0
+            while elapsed < confirm_wait:
+                slice_ = min(0.6, confirm_wait - elapsed)
+                stop_sleep(slice_)
+                elapsed += slice_
+                activate_window("game")
+                if dismiss_popups(timeout=0.5):
+                    logger.warning(
+                        "detect_view — popup podczas potwierdzenia, ponawiam (próba %s/%s)",
+                        attempt + 1,
+                        max_attempts,
+                    )
+                    popped_during_confirm = True
+                    break
+
+            if popped_during_confirm:
+                if attempt >= max_attempts - 1:
+                    break
+                continue
+
             screen2 = screenshot()
             view2, _, _ = _score_view(screen2)
             if view2 is view and not _settings_open(screen2):
