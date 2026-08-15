@@ -18,6 +18,8 @@ from input import match_score, press_key, screenshot
 from log import logger
 from state.stop import sleep as stop_sleep
 
+from .popups import dismiss_popups
+
 IN_CITY_TEMPLATES = ("in_city.png", "in_city2.png")
 ON_MAP_TEMPLATES = ("on_map.png", "on_map2.png")
 SETTING_BUTTON_TEMPLATE = _ROOT / "templates" / "navigation" / "setting_button.png"
@@ -46,8 +48,8 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
     """
     Określ, czy gra pokazuje widok miasta czy mapy.
 
-    Gdy żaden szablon nie pasuje (lub remis score), naciśnij Esc i spróbuj ponownie.
-    Gdy miasto/mapa pasuje, ale widać setting_button — Esc (zamknięcie ustawień) i weryfikacja ponownie.
+    Gdy brak miasta/mapy: najpierw znane popupy (dismiss_popups), potem Esc.
+    Gdy miasto/mapa pasuje, ale widać setting_button — Esc i weryfikacja ponownie.
     Gdy oba pasują naraz, wybierz widok z wyższym score.
     Zwraca GameView.UNKNOWN po wyczerpaniu prób.
     """
@@ -94,6 +96,18 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
             return view
 
         if attempt < max_attempts - 1:
+            # Najpierw znane X — Esc nie zawsze zamyka custom popup.
+            # dismiss_popups sam zamyka kilka z rzędu (max 5), gdy po jednym
+            # wyskakuje kolejny; ta pętla detect_view też ponawia przy wolnym UI.
+            activate_window("game")
+            if dismiss_popups(timeout=0.8):
+                logger.warning(
+                    "detect_view — zamknięto popup(y), ponawiam (próba %s/%s)",
+                    attempt + 1,
+                    max_attempts,
+                )
+                continue
+
             logger.warning(
                 "detect_view — brak miasta/mapy city=%.3f map=%.3f, Esc (próba %s/%s)",
                 city_score,
@@ -101,7 +115,6 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
                 attempt + 1,
                 max_attempts,
             )
-            activate_window("game")
             press_key("esc")
             stop_sleep(random.uniform(*_UI_SETTLE_DELAY))
 
@@ -115,7 +128,7 @@ def detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
 
 
 def in_game() -> bool:
-    """Czy jesteśmy w świecie gry (miasto LUB mapa). Zamyka też ustawienia (setting_button)."""
+    """Czy jesteśmy w świecie gry (miasto LUB mapa). Zamyka popupy i ustawienia."""
     return detect_view() is not GameView.UNKNOWN
 
 
