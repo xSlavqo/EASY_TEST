@@ -18,12 +18,43 @@ from nicegui import app, ui
 
 from game.hero_manager import manager
 from log import logger
-from state.keys import ALLIANCE_PIT_STATUS, BOT, TASK_ALLIANCE_PIT
+from state.keys import (
+    ALLIANCE_PIT_STATUS,
+    BOT,
+    TASK_ALLIANCE_PIT,
+    scount_sentry_post_schedule_id,
+)
 from state.schedule import remaining_sec, schedule
 from state.settings import settings
 from state.stop import is_stopped
 from state.store import INFO_PATH, get_data
 from www.formatters import format_countdown, format_pit_status, format_pit_time
+
+
+def _ssp_remaining_sec() -> float | None:
+    """
+    Odliczanie SSP w panelu: 0 jeśli któryś hero jest due,
+    inaczej najbliższy przyszły termin wśród bohaterów.
+    """
+    soonest_future: float | None = None
+    someone_due = False
+    for hero in manager.heroes:
+        rem = remaining_sec(scount_sentry_post_schedule_id(hero.email, hero.id))
+        if rem is None or rem <= 0:
+            someone_due = True
+            continue
+        if soonest_future is None or rem < soonest_future:
+            soonest_future = rem
+    if someone_due:
+        return 0.0
+    return soonest_future
+
+
+def _reset_all_ssp_schedules() -> None:
+    """Reset harmonogramu SSP u wszystkich bohaterów → od razu due."""
+    for hero in manager.heroes:
+        schedule(scount_sentry_post_schedule_id(hero.email, hero.id), 0)
+    logger.info("zresetowano harmonogram SSP u wszystkich hero")
 
 
 def _lan_ips() -> list[str]:
@@ -64,6 +95,7 @@ _CHECKS = (
     ("close_game_after_cycle", "Zamykaj grę po cyklu"),
     ("alliance_rss_enabled", "Odbierz surowce sojuszu"),
     ("alliance_pit_enabled", "Centrum zasobów przymierza"),
+    ("scount_sentry_post_enabled", "Sentry Post (próby scouta)"),
     ("gather_rss_enabled", "Zbieranie RSS"),
     ("gather_rss_gold", "RSS: złoto"),
     ("gather_rss_wood", "RSS: drewno"),
@@ -156,6 +188,14 @@ def run_www(
                         ).props("flat dense")
 
                     with ui.row().classes("items-center gap-2 flex-wrap"):
+                        ui.label("czas do SSP:")
+                        ssp_time_lbl = ui.label("—").classes("font-bold")
+                        ui.button(
+                            "Reset",
+                            on_click=_reset_all_ssp_schedules,
+                        ).props("flat dense")
+
+                    with ui.row().classes("items-center gap-2 flex-wrap"):
                         ui.label("odwiedzeni hero:")
                         visited_lbl = ui.label("0").classes("font-bold")
 
@@ -200,6 +240,9 @@ def run_www(
                         )
                         pit_status_lbl.set_text(
                             format_pit_status(status, pit_rem)
+                        )
+                        ssp_time_lbl.set_text(
+                            format_countdown(_ssp_remaining_sec())
                         )
                         visited_lbl.set_text(str(len(manager.visited_ids)))
                         _sync_bot_btn()

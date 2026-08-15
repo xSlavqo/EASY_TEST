@@ -139,7 +139,7 @@ def start_discord_bot() -> bool:
                 else:
                     mentions = (
                         _ALLOW_EVERYONE
-                        if item.startswith("@everyone")
+                        if "@everyone" in item
                         else _NO_MENTIONS
                     )
                     await channel.send(item, allowed_mentions=mentions)

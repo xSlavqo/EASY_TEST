@@ -10,17 +10,24 @@ from client import activate_window, close_windows, run_game
 from game import in_game
 from game.hero_manager import manager
 from log import logger
-from state.keys import BOT, TASK_ALLIANCE_PIT, TASK_ALLIANCE_RSS
+from state.keys import (
+    BOT,
+    TASK_ALLIANCE_PIT,
+    TASK_ALLIANCE_RSS,
+    scount_sentry_post_schedule_id,
+)
 from state.schedule import is_due, schedule
 from state.settings import settings
 from state.stop import sleep as stop_sleep
 from tasks.alliance_pit import alliance_pit, is_wave_active, reset_cycle_state
 from tasks.alliance_rss import alliance_rss
 from tasks.gather_rss import gather_rss
+from tasks.scount_sentry_post import scount_sentry_post
 
 _CYCLE_INTERVAL_MIN_SEC = 4 * 60 * 60
 _CYCLE_INTERVAL_MAX_SEC = 5 * 60 * 60
 _ALLIANCE_COOLDOWN_SEC = 10 * 60 * 60
+_SSP_COOLDOWN_SEC = 14 * 60 * 60
 
 # Odczekanie na przeładowanie konta po swapie (potem in_game + current_hero).
 _RELOGIN_FOCUS_DELAY_SEC = 15.0
@@ -71,6 +78,20 @@ def run_cycle() -> bool:
                 if not _restart_after_task_fail():
                     return False
                 continue
+
+            ssp_id = _ssp_schedule_id()
+            ssp = _run_task(
+                "scount_sentry_post",
+                scount_sentry_post,
+                enabled=settings.scount_sentry_post_enabled,
+                due=ssp_id is not None and is_due(ssp_id),
+            )
+            if ssp is False:
+                if not _restart_after_task_fail():
+                    return False
+                continue
+            if ssp is True and ssp_id is not None:
+                schedule(ssp_id, _SSP_COOLDOWN_SEC)
 
             gather = _run_task(
                 "gather_rss",
@@ -173,6 +194,14 @@ def _reset_hero_task_state() -> None:
     global _task_fail_restarts
     _done_tasks.clear()
     _task_fail_restarts = 0
+
+
+def _ssp_schedule_id() -> str | None:
+    """Klucz harmonogramu SSP dla zalogowanego hero, albo None."""
+    for hero in manager.heroes:
+        if hero.logged_in:
+            return scount_sentry_post_schedule_id(hero.email, hero.id)
+    return None
 
 
 def _restart_after_task_fail() -> bool:

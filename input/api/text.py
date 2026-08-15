@@ -22,10 +22,8 @@ def get_text(region: Region, allowlist: str) -> str | None:
 
 
 # --- test ręczny (Code Runner / python input/api/text.py) ---
-# coord_picker - 1920x1080 — ZA DUŻY na OCR (cała karta); zostawiony jako referencja.
-# _TEST_REGION: Region = (364, 387, 1205, 585)
-# Wąski ROI na status/timer — podmień na dokładny wycinek z coord_picker.
-_TEST_REGION: Region = (364, 387, 1205, 585)
+# try count region (coord_picker 1920x1080).
+_TEST_REGION: Region = (1232, 255, 68, 26)
 _TEST_ALLOWLIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:/"
 
 
