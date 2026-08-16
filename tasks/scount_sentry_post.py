@@ -24,6 +24,11 @@ from input import (
 from log import logger
 from state.stop import check_stop, sleep as stop_sleep
 
+# in_ssp: 0.99 bywa za ostre (noc / lekko inny UI) — enter schodzi niżej,
+# więc potwierdzenie też musi być łagodniejsze niż domyślne 0.99.
+_IN_SSP_THRESHOLD = 0.98
+_IN_SSP_TIMEOUT = 7.0
+
 
 def scount_sentry_post() -> bool:
     """Wejdź w SSP i zużywaj próby (try1/try2), aż znikną. True = OK."""
@@ -60,14 +65,16 @@ def _ssp_entry() -> bool:
     """
     Wejdź w Sentry Post, albo True gdy już jesteśmy w środku (in_ssp.png).
 
-    ssp_enter: próg 1.00 → 0.85 co 0.05, każde szukanie max 3 s.
-    Po kliknięciu musi potwierdzić in_ssp.png; brak → warning @everyone + False (soft-skip).
+    ssp_enter: próg 1.00 → 0.88 co 0.02 (7 prób), każde szukanie max 3 s.
+    Po kliknięciu musi potwierdzić in_ssp.png (próg 0.98, do 7 s); brak → error + False (soft-skip).
     """
     ssp_dir = _ROOT / "templates" / "ssp"
     in_ssp = ssp_dir / "in_ssp.png"
     sentry_enter = ssp_dir / "ssp_enter.png"
 
-    if find_on_screen(in_ssp, timeout=1.5):
+    if find_on_screen(
+        in_ssp, timeout=1.5, threshold=_IN_SSP_THRESHOLD
+    ):
         return True
 
     if not go_to_city():
@@ -75,27 +82,30 @@ def _ssp_entry() -> bool:
         return False
     stop_sleep(random.uniform(0.5, 1.0))
 
-    # 1.00, 0.95, 0.90, 0.85 — każde okno szukania 3 s.
-    thresholds = [1.0 - 0.02 * i for i in range(4)]
+    # 1.00, 0.98, …, 0.88 — 7 prób, każde okno szukania 3 s.
+    thresholds = [1.0 - 0.02 * i for i in range(7)]
     for threshold in thresholds:
         check_stop()
         if not find_and_click(sentry_enter, timeout=3.0, threshold=threshold):
             continue
 
         stop_sleep(random.uniform(3.0, 4.7))
-        if find_on_screen(in_ssp, timeout=3.0):
+        if find_on_screen(
+            in_ssp, timeout=_IN_SSP_TIMEOUT, threshold=_IN_SSP_THRESHOLD
+        ):
             return True
 
         # Kliknięto, ale nie weszliśmy — soft-skip + screen (error) na Discord.
         logger.error(
             "ssp_entry — brak in_ssp po kliknięciu ssp_enter "
-            "(próg %.2f) na %s — pomijam SSP",
+            "(próg enter %.2f, in_ssp ≥%.2f) na %s — pomijam SSP",
             threshold,
+            _IN_SSP_THRESHOLD,
             _logged_in_hero_label(),
         )
         return False
 
-    logger.warning("ssp_entry — nie znaleziono ssp_enter.png (1.00→0.85)")
+    logger.warning("ssp_entry — nie znaleziono ssp_enter.png (1.00→0.88)")
     return False
 
 
