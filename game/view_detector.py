@@ -61,43 +61,47 @@ def in_game() -> bool:
 
 def is_in_game(*, timeout: float = _CITY_READY_TIMEOUT) -> bool:
     """
-    Po starcie / swapie: czekaj na in_city. Brak → popup i szukaj dalej.
-    Po timeout: kilka Esc, aż widać miasto.
+    Po starcie / swapie: czekaj na miasto albo mapę.
+    Brak → popup i szukaj dalej.
+    Po timeout: kilka Esc, aż widać świat gry.
+    Ekran swapa nie pasuje do szablonów — nie liczy się jako sukces.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         activate_window("game")
         view, _, _ = _score_view(screenshot(_VIEW_REGION))
-        if view is GameView.CITY:
+        if view is not None:
             return True
         if dismiss_popups(timeout=0.5):
             continue
         stop_sleep(random.uniform(*_CITY_READY_POLL))
 
-    logger.error("is_in_game — brak miasta przez %.0f s, próbuję Esc", timeout)
+    logger.error("is_in_game — brak miasta/mapy przez %.0f s, próbuję Esc", timeout)
     for attempt in range(_CITY_READY_MAX_ESC):
         activate_window("game")
         press_key("esc")
         stop_sleep(random.uniform(*_UI_SETTLE_DELAY))
         view, _, _ = _score_view(screenshot(_VIEW_REGION))
-        if view is GameView.CITY:
+        if view is not None:
             logger.info(
-                "is_in_game — miasto po Esc (próba %s/%s)",
+                "is_in_game — %s po Esc (próba %s/%s)",
+                view.value,
                 attempt + 1,
                 _CITY_READY_MAX_ESC,
             )
             return True
         if dismiss_popups(timeout=0.8):
             view, _, _ = _score_view(screenshot(_VIEW_REGION))
-            if view is GameView.CITY:
+            if view is not None:
                 logger.info(
-                    "is_in_game — miasto po popupie (próba %s/%s)",
+                    "is_in_game — %s po popupie (próba %s/%s)",
+                    view.value,
                     attempt + 1,
                     _CITY_READY_MAX_ESC,
                 )
                 return True
     logger.error(
-        "is_in_game — Esc nie odsłonił miasta po %s próbach",
+        "is_in_game — Esc nie odsłonił miasta ani mapy po %s próbach",
         _CITY_READY_MAX_ESC,
     )
     return False

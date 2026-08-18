@@ -77,13 +77,26 @@ class HeroSwap:
         ):
             return False
 
+        logger.info(
+            "swap_hero — OCR 5 slotów, kandydaci %s (uid %s)",
+            [hero.nick for hero in candidates],
+            uid,
+        )
         hits: list[tuple[Hero, tuple[int, int, int, int]]] = []
         seen_nicks: set[str] = set()
-        for slot in _SWAP_NICK_SLOTS:
-            nick = _nick_from_swap_ocr(get_text(slot, _NICK_ALLOW))
+        for i, slot in enumerate(_SWAP_NICK_SLOTS, start=1):
+            raw = get_text(slot, _NICK_ALLOW)
+            nick = _nick_from_swap_ocr(raw)
+            hero = _match_candidate(candidates, nick) if nick else None
             if not nick:
-                continue
-            hero = _match_candidate(candidates, nick)
+                note = "pusto"
+            elif hero is None:
+                note = "pominięty"
+            elif hero.nick in seen_nicks:
+                note = "duplikat"
+            else:
+                note = "kandydat"
+            logger.info("swap_hero — slot %s OCR %r → nick %r (%s)", i, raw, nick, note)
             if hero is None or hero.nick in seen_nicks:
                 continue
             seen_nicks.add(hero.nick)
@@ -103,8 +116,13 @@ class HeroSwap:
             return False
 
         hero, slot = random.choice(hits)
+        logger.info(
+            "swap_hero — wybór %s spośród %s",
+            hero.nick,
+            [item.nick for item, _ in hits],
+        )
         click_region(*slot, margin=0.15)
-        stop_sleep(random.uniform(3.0, 4.7))
+        stop_sleep(random.uniform(0.7, 1.2))
         if find_and_click(confirm, timeout=30.0):
             logger.info("swap_hero — kliknięto %s (uid %s)", hero.nick, hero.uid)
             return True
