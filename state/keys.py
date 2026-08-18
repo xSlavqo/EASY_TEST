@@ -8,7 +8,7 @@ TASK_SCOUNT_SENTRY_POST = "task.scount_sentry_post"
 # Stan pitu z ostatniego odczytu (not_built / gather / building / occupied).
 ALLIANCE_PIT_STATUS = "task.alliance_pit.status"
 
-# Lista odwiedzonych w bieżącym cyklu: ["email/hero_id", ...].
+# Lista odwiedzonych w bieżącym cyklu: ["uid/nick", ...].
 HEROES_VISITED = "heroes.visited"
 
 # Stary płaski format — migracja przy pierwszym odczycie bota.
@@ -20,6 +20,6 @@ def schedule_next_run_key(entity_id: str) -> str:
     return f"schedule.{entity_id}.next_run_at"
 
 
-def scount_sentry_post_schedule_id(email: str, hero_id: str) -> str:
-    """Harmonogram SSP per bohater: task.scount_sentry_post.<email>/<hero_id>."""
-    return f"{TASK_SCOUNT_SENTRY_POST}.{email}/{hero_id}"
+def scount_sentry_post_schedule_id(uid: str, nick: str) -> str:
+    """Harmonogram SSP per bohater: task.scount_sentry_post.<uid>/<nick>."""
+    return f"{TASK_SCOUNT_SENTRY_POST}.{uid}/{nick}"

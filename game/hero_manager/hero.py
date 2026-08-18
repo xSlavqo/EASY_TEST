@@ -1,26 +1,21 @@
-"""Jedna postać — dane i stan bohatera."""
+"""Jedna postać — nick, uid konta, stan."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 
 class Hero:
-    """Jedna postać — email konta (z folderu = przypisany do main.png), awatary, stan."""
+    """Jedna postać z whitelist: nick (unikalny) + uid (konto, może mieć wiele nicków)."""
 
-    def __init__(
-        self,
-        email: str,
-        hero_id: str,
-        main: Path,
-        swap: Path | None,
-    ) -> None:
-        # Adres konta z templates/heroes/<email>/... — ten sam email idzie do account_swap (OCR).
-        self.email = email
-        self.id = hero_id
-        self.main = main
-        self.swap = swap
+    def __init__(self, nick: str, uid: str, *, enabled: bool = True) -> None:
+        self.nick = nick
+        self.uid = uid
+        self.enabled = enabled
         self.logged_in = False
         self.visited = False
-        # None = brak sojuszu; str = ID sojuszu (na razie stałe MZ2).
-        self.alliance: str | None = "MZ2"
+        # None = jeszcze nie odczytane; "brak" = OCR "-" (bez sojuszu).
+        self.alliance: str | None = None
+        # Id tej postaci z przeglądu (to NIE uid konta).
+        self.hero_id: str | None = None
+        # PDW z przeglądu: aktualne / max (np. 1480/1480).
+        self.pdw: int | None = None
+        self.pdw_max: int | None = None

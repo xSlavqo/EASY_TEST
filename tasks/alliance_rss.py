@@ -13,11 +13,12 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from game import go_to_alliance_menu
+from game.hero_manager import manager
 from input import find_and_click, press_key
 from log import logger
 from state.stop import sleep as stop_sleep
 
-_ALLIANCE_DIR = _ROOT / "templates" / "aliance"
+_ALLIANCE_DIR = _ROOT / "templates" / "alliance"
 _ALLY_TERRITORY_MENU = _ALLIANCE_DIR / "ally_territory_menu.png"
 _COLLECT_ALLY_RSS = _ALLIANCE_DIR / "collect_ally_rss.png"
 
@@ -27,9 +28,15 @@ _AFTER_COLLECT_DELAY = (2.0, 3.0)
 
 
 def alliance_rss() -> bool:
-    """True = zebrano. False = błąd UI."""
+    """True = zebrano albo skip (brak sojuszu / DOŁĄCZ). False = błąd UI."""
+    if not manager.is_in_alliance():
+        logger.info("alliance_rss — current_hero nie zapisał sojuszu, nie wchodzę")
+        return True
     if not go_to_alliance_menu():
         return False
+    if not manager.is_in_alliance():
+        logger.info("alliance_rss — wyłącznik DOŁĄCZ, pomijam")
+        return True
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
     if not find_and_click(_ALLY_TERRITORY_MENU, timeout=_CLICK_TIMEOUT):

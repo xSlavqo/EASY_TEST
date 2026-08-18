@@ -27,7 +27,7 @@ from log import logger
 from state.settings import settings
 from state.stop import check_stop, sleep as stop_sleep
 
-from game import go_on_map
+from game import go_to_map
 
 # Ikony surowców w dolnym pasku wyszukiwania (1920×1080) — (x,y,w,h), label, key
 # Włączanie: gather_rss_gold / gather_rss_wood / gather_rss_ore w data/config.json
@@ -87,7 +87,7 @@ def gather_rss() -> tuple[bool, int]:
     Zwraca (rss_done, marches_sent).
     """
 
-    if not go_on_map():
+    if not go_to_map():
         logger.error("nie udało się przejść na mapę")
         return False, 0
 
@@ -120,7 +120,7 @@ def gather_rss() -> tuple[bool, int]:
                 attempt,
                 _MAX_SEND_RETRIES,
             )
-            if not go_on_map():
+            if not go_to_map():
                 logger.error("nie udało się wrócić na mapę po błędzie")
                 return False, legions_sent
         else:
@@ -134,7 +134,7 @@ def gather_rss() -> tuple[bool, int]:
     return True, legions_sent
 
 
-# --- pomocnicze ---
+# --- pomocnicze (kolejność: jak woła gather_rss, potem jak woła _try_send_one_legion) ---
 
 
 def _pick_resource():
@@ -155,57 +155,56 @@ def _pick_resource():
     return picked
 
 
-def _level_ocr_region(resource_key: str) -> tuple[int, int, int, int] | None:
-    """Pełny region OCR poziomu — napis przesuwa się z suwakiem."""
-    return _LEVEL_OCR_REGIONS.get(resource_key)
+def _try_send_one_legion(
+    resource,
+    *,
+    set_rss: bool,
+) -> tuple[_SendResult, bool]:
+    """Jedna próba wysłania legionu od otwarcia panelu wyszukiwania."""
+    press_key("f")
+    stop_sleep(random.uniform(*_ACTION_DELAY))
 
+    if set_rss:
+        click_region(*resource[0], margin=_ICON_CLICK_MARGIN)
+        stop_sleep(random.uniform(*_ACTION_DELAY))
+        if not _ensure_rss_level(resource[2]):
+            logger.error("nie udało się ustawić poziomu RSS")
+            return "failed", set_rss
+    else:
+        stop_sleep(random.uniform(*_ACTION_DELAY))
 
-def _parse_rss_level(text: str) -> int | None:
-    """
-    Z surowego OCR wyciągnij poziom 1..max.
+    if not find_and_click(_RSS_FIND, timeout=_CLICK_TIMEOUT):
+        logger.error("nie znaleziono rss_find.png")
+        return "failed", set_rss
+    stop_sleep(random.uniform(*_ACTION_DELAY))
 
-    „10” ma pierwszeństwo. Długie śmieci (np. „801”) → ostatnia cyfra 1–9,
-    bo OCR często dokleja artefakty z lewej (uchwyt / „o”→0).
-    """
-    raw = text.strip()
-    if not raw:
-        return None
-    if "10" in raw:
-        return 10
+    if not find_and_click(_RSS_PREPARE_TO_GATHER, timeout=_CLICK_TIMEOUT):
+        logger.error("nie znaleziono rss_prepare_to_gather.png")
+        return "failed", set_rss
+    stop_sleep(random.uniform(*_ACTION_DELAY))
 
-    for chunk in re.findall(r"\d+", raw):
-        value = int(chunk)
-        if _RSS_LEVEL_MIN <= value <= _RSS_LEVEL_MAX:
-            return value
-        # „80” → 8; „801” → 1 (nie pierwsza cyfra — to bywa uchwyt suwaka)
-        for ch in reversed(chunk):
-            digit = int(ch)
-            if _RSS_LEVEL_MIN <= digit <= 9:
-                return digit
-    return None
+    remaining = _legions_remaining_in_field()
+    if remaining is not None and remaining <= 0:
+        return "no_more", set_rss
 
+    if not find_and_click(_RSS_CREATE_LEGION, timeout=_CLICK_TIMEOUT):
+        return "no_more", set_rss
+    stop_sleep(random.uniform(*_ACTION_DELAY))
 
-def _read_rss_level(resource_key: str) -> int | None:
-    """OCR „Poziom X” → liczba 1..10 albo None."""
-    region = _level_ocr_region(resource_key)
-    if region is None:
-        return None
-    text = get_text(region, _LEVEL_OCR_ALLOWLIST)
-    if text is None:
-        return None
-    return _parse_rss_level(text)
+    if remaining != 1:
+        find_and_click(_RSS_DELETE_ONE_HERO, timeout=_OPTIONAL_CLICK_TIMEOUT)
+        stop_sleep(random.uniform(*_ACTION_DELAY))
 
+    if not find_and_click(_LEGION_START, timeout=_CLICK_TIMEOUT):
+        logger.error("nie znaleziono legion_start.png")
+        return "failed", set_rss
 
-def _locate_level_button(template) -> tuple[int, int, int, int] | None:
-    """Znajdź przycisk +/- raz — zwraca (x, y, w, h) albo None."""
-    deadline = time.monotonic() + _LEVEL_CLICK_TIMEOUT
-    while time.monotonic() < deadline:
-        check_stop()
-        rect = locate_template(template, DEFAULT_THRESHOLD)
-        if rect is not None:
-            return rect
-        stop_sleep(random.uniform(0.25, 0.55))
-    return None
+    set_rss = False
+    stop_sleep(random.uniform(*_ACTION_DELAY))
+
+    if remaining == 1:
+        return "sent_last", set_rss
+    return "sent", set_rss
 
 
 def _ensure_rss_level(resource_key: str) -> bool:
@@ -266,6 +265,59 @@ def _ensure_rss_level(resource_key: str) -> bool:
     return True
 
 
+def _level_ocr_region(resource_key: str) -> tuple[int, int, int, int] | None:
+    """Pełny region OCR poziomu — napis przesuwa się z suwakiem."""
+    return _LEVEL_OCR_REGIONS.get(resource_key)
+
+
+def _read_rss_level(resource_key: str) -> int | None:
+    """OCR „Poziom X” → liczba 1..10 albo None."""
+    region = _level_ocr_region(resource_key)
+    if region is None:
+        return None
+    text = get_text(region, _LEVEL_OCR_ALLOWLIST)
+    if text is None:
+        return None
+    return _parse_rss_level(text)
+
+
+def _parse_rss_level(text: str) -> int | None:
+    """
+    Z surowego OCR wyciągnij poziom 1..max.
+
+    „10” ma pierwszeństwo. Długie śmieci (np. „801”) → ostatnia cyfra 1–9,
+    bo OCR często dokleja artefakty z lewej (uchwyt / „o”→0).
+    """
+    raw = text.strip()
+    if not raw:
+        return None
+    if "10" in raw:
+        return 10
+
+    for chunk in re.findall(r"\d+", raw):
+        value = int(chunk)
+        if _RSS_LEVEL_MIN <= value <= _RSS_LEVEL_MAX:
+            return value
+        # „80” → 8; „801” → 1 (nie pierwsza cyfra — to bywa uchwyt suwaka)
+        for ch in reversed(chunk):
+            digit = int(ch)
+            if _RSS_LEVEL_MIN <= digit <= 9:
+                return digit
+    return None
+
+
+def _locate_level_button(template) -> tuple[int, int, int, int] | None:
+    """Znajdź przycisk +/- raz — zwraca (x, y, w, h) albo None."""
+    deadline = time.monotonic() + _LEVEL_CLICK_TIMEOUT
+    while time.monotonic() < deadline:
+        check_stop()
+        rect = locate_template(template, DEFAULT_THRESHOLD)
+        if rect is not None:
+            return rect
+        stop_sleep(random.uniform(0.25, 0.55))
+    return None
+
+
 def _legions_remaining_in_field() -> int | None:
     """
     OCR pól legionów → parsuj „2/5” → ile można jeszcze wysłać (max - current).
@@ -286,58 +338,6 @@ def _legions_remaining_in_field() -> int | None:
         return maximum - current
 
     return None
-
-
-def _try_send_one_legion(
-    resource,
-    *,
-    set_rss: bool,
-) -> tuple[_SendResult, bool]:
-    """Jedna próba wysłania legionu od otwarcia panelu wyszukiwania."""
-    press_key("f")
-    stop_sleep(random.uniform(*_ACTION_DELAY))
-
-    if set_rss:
-        click_region(*resource[0], margin=_ICON_CLICK_MARGIN)
-        stop_sleep(random.uniform(*_ACTION_DELAY))
-        if not _ensure_rss_level(resource[2]):
-            logger.error("nie udało się ustawić poziomu RSS")
-            return "failed", set_rss
-    else:
-        stop_sleep(random.uniform(*_ACTION_DELAY))
-
-    if not find_and_click(_RSS_FIND, timeout=_CLICK_TIMEOUT):
-        logger.error("nie znaleziono rss_find.png")
-        return "failed", set_rss
-    stop_sleep(random.uniform(*_ACTION_DELAY))
-
-    if not find_and_click(_RSS_PREPARE_TO_GATHER, timeout=_CLICK_TIMEOUT):
-        logger.error("nie znaleziono rss_prepare_to_gather.png")
-        return "failed", set_rss
-    stop_sleep(random.uniform(*_ACTION_DELAY))
-
-    remaining = _legions_remaining_in_field()
-    if remaining is not None and remaining <= 0:
-        return "no_more", set_rss
-
-    if not find_and_click(_RSS_CREATE_LEGION, timeout=_CLICK_TIMEOUT):
-        return "no_more", set_rss
-    stop_sleep(random.uniform(*_ACTION_DELAY))
-
-    if remaining != 1:
-        find_and_click(_RSS_DELETE_ONE_HERO, timeout=_OPTIONAL_CLICK_TIMEOUT)
-        stop_sleep(random.uniform(*_ACTION_DELAY))
-
-    if not find_and_click(_LEGION_START, timeout=_CLICK_TIMEOUT):
-        logger.error("nie znaleziono legion_start.png")
-        return "failed", set_rss
-
-    set_rss = False
-    stop_sleep(random.uniform(*_ACTION_DELAY))
-
-    if remaining == 1:
-        return "sent_last", set_rss
-    return "sent", set_rss
 
 
 if __name__ == "__main__":

@@ -13,7 +13,6 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from game import go_to_city
-from game.hero_manager import manager
 from input import (
     click_region,
     find_and_click,
@@ -24,10 +23,8 @@ from input import (
 from log import logger
 from state.stop import check_stop, sleep as stop_sleep
 
-# in_ssp: 0.99 bywa za ostre (noc / lekko inny UI) — enter schodzi niżej,
-# więc potwierdzenie też musi być łagodniejsze niż domyślne 0.99.
+# in_ssp: 0.99 bywa za ostre (noc / lekko inny UI).
 _IN_SSP_THRESHOLD = 0.98
-_IN_SSP_TIMEOUT = 7.0
 
 
 def scount_sentry_post() -> bool:
@@ -66,7 +63,7 @@ def _ssp_entry() -> bool:
     Wejdź w Sentry Post, albo True gdy już jesteśmy w środku (in_ssp.png).
 
     ssp_enter: próg 1.00 → 0.88 co 0.02 (7 prób), każde szukanie max 3 s.
-    Po kliknięciu musi potwierdzić in_ssp.png (próg 0.98, do 7 s); brak → error + False (soft-skip).
+    Po kliknięciu ufamy wejściu — try1/try2 albo sam True.
     """
     ssp_dir = _ROOT / "templates" / "ssp"
     in_ssp = ssp_dir / "in_ssp.png"
@@ -90,31 +87,10 @@ def _ssp_entry() -> bool:
             continue
 
         stop_sleep(random.uniform(3.0, 4.7))
-        if find_on_screen(
-            in_ssp, timeout=_IN_SSP_TIMEOUT, threshold=_IN_SSP_THRESHOLD
-        ):
-            return True
-
-        # Kliknięto, ale nie weszliśmy — soft-skip + screen (error) na Discord.
-        logger.error(
-            "ssp_entry — brak in_ssp po kliknięciu ssp_enter "
-            "(próg enter %.2f, in_ssp ≥%.2f) na %s — pomijam SSP",
-            threshold,
-            _IN_SSP_THRESHOLD,
-            _logged_in_hero_label(),
-        )
-        return False
+        return True
 
     logger.warning("ssp_entry — nie znaleziono ssp_enter.png (1.00→0.88)")
     return False
-
-
-def _logged_in_hero_label() -> str:
-    """email/hero_id zalogowanego bohatera, albo '?'."""
-    for hero in manager.heroes:
-        if hero.logged_in:
-            return f"{hero.email}/{hero.id}"
-    return "?"
 
 
 def _ssp_popup_close() -> bool:

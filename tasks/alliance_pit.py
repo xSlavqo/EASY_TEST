@@ -20,6 +20,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from game import go_to_alliance_menu
+from game.hero_manager import manager
 from input import (
     click_region,
     find_and_click,
@@ -34,7 +35,7 @@ from state.schedule import schedule
 from state.stop import sleep as stop_sleep
 from state.store import INFO_PATH, save_data
 
-_ALLIANCE_DIR = _ROOT / "templates" / "aliance"
+_ALLIANCE_DIR = _ROOT / "templates" / "alliance"
 _ALLY_TERRITORY_MENU = _ALLIANCE_DIR / "ally_territory_menu.png"
 _COLLECT_ALLY_RSS = _ALLIANCE_DIR / "collect_ally_rss.png"
 _HIDE_TAB = _ALLIANCE_DIR / "hide_tab.png"
@@ -75,7 +76,7 @@ _MATCH_THRESHOLD = 0.99
 PitStatus = Literal["gather", "building", "occupied"]
 PitKind = Literal["gold_pit", "wood_pit", "ore_pit", "mana_pit"]
 # Wynik wejścia w pit: jest / nie ma / nie dało się dojść UI.
-PitAvailability = Literal["built", "not_built", "nav_error"]
+PitAvailability = Literal["built", "not_built", "nav_error", "no_alliance"]
 
 # coord_picker 1920×1080 — konfiguracja legionu przy building (po create_legion).
 _LEGION_CONFIG_REGION: tuple[int, int, int, int] = (1220, 409, 186, 19)  # 1/3 okno konfiguracji
@@ -110,20 +111,6 @@ _ocr_done = False
 _skip_rest = False
 
 
-def reset_cycle_state() -> None:
-    """Wyzeruj falę/OCR/skip na start cyklu (woła bot/cycle)."""
-    global _wave_active, _wave_kind, _ocr_done, _skip_rest
-    _wave_active = False
-    _wave_kind = None
-    _ocr_done = False
-    _skip_rest = False
-
-
-def is_wave_active() -> bool:
-    """Czy trwa fala sendów — cykl: due=is_due(...) or is_wave_active()."""
-    return _wave_active
-
-
 def alliance_pit() -> bool:
     """
     True = OK (send / skip not_built / occupied).
@@ -135,6 +122,10 @@ def alliance_pit() -> bool:
     if _skip_rest:
         return True
 
+    if not manager.is_in_alliance():
+        logger.info("alliance_pit — current_hero nie zapisał sojuszu, nie wchodzę")
+        return True
+
     # OCR tylko gdy jeszcze nie udało się odczytać timera/kind.
     read_lock = not _ocr_done
 
@@ -142,6 +133,9 @@ def alliance_pit() -> bool:
     if available == "nav_error":
         logger.warning("alliance_pit — błąd nawigacji")
         return False
+    if available == "no_alliance":
+        logger.info("alliance_pit — hero bez sojuszu, pomijam")
+        return True
     if available == "not_built":
         save_data(INFO_PATH, ALLIANCE_PIT_STATUS, "not_built")
         _wave_active = False
@@ -167,6 +161,8 @@ def _is_pit_available() -> PitAvailability:
     if not find_on_screen(_COLLECT_ALLY_RSS, timeout=_ALLY_MENU_CHECK_TIMEOUT):
         if not go_to_alliance_menu():
             return "nav_error"
+        if not manager.is_in_alliance():
+            return "no_alliance"
         stop_sleep(random.uniform(*_ACTION_DELAY))
 
         if not find_and_click(_ALLY_TERRITORY_MENU, timeout=_CLICK_TIMEOUT):
@@ -346,4 +342,18 @@ def _if_occupied(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
     _wave_kind = None
     _skip_rest = True
     return True
+
+
+def reset_cycle_state() -> None:
+    """Wyzeruj falę/OCR/skip na start cyklu (woła bot/cycle)."""
+    global _wave_active, _wave_kind, _ocr_done, _skip_rest
+    _wave_active = False
+    _wave_kind = None
+    _ocr_done = False
+    _skip_rest = False
+
+
+def is_wave_active() -> bool:
+    """Czy trwa fala sendów — cykl: due=is_due(...) or is_wave_active()."""
+    return _wave_active
 

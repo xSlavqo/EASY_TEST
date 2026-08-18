@@ -17,10 +17,25 @@ DEFAULT_FIND_CLICK_TIMEOUT = 30.0
 DEFAULT_FIND_ON_SCREEN_TIMEOUT = 0.0
 DEFAULT_WAIT_ANY_TIMEOUT = 120.0
 
-DEFAULT_POLL_INTERVAL = (0.5, 1.5)
+# Szukanie szablonu co 0.5 s (gdy nie ma popupu do zamknięcia).
+DEFAULT_POLL_INTERVAL = (0.5, 0.5)
 DEFAULT_WAIT_INITIAL_DELAY = 0.0
 
 DEFAULT_CLICK_MARGIN = 0.15
+
+
+def _on_no_match(poll_interval: tuple[float, float] = DEFAULT_POLL_INTERVAL) -> None:
+    """
+    Brak szablonu: zamknij znany popup i szukaj od razu;
+    gdy popupów nie ma — poczekaj i szukaj dalej.
+    """
+    # Import tu, nie na górze pliku: input nie może ładować game przy starcie
+    # (game i tak importuje input — byłby import w kółko).
+    from game.popups import dismiss_popups
+
+    if dismiss_popups():
+        return
+    stop_sleep(random.uniform(*poll_interval))
 
 
 def find_and_click(
@@ -47,7 +62,7 @@ def find_and_click(
         if rect is not None:
             click_region(*rect, margin=margin, offset_x=offset_x, offset_y=offset_y)
             return True
-        stop_sleep(random.uniform(*poll_interval))
+        _on_no_match(poll_interval)
 
     return False
 
@@ -74,7 +89,7 @@ def find_on_screen(
         if time.monotonic() >= deadline:
             return False
 
-        stop_sleep(random.uniform(*poll_interval))
+        _on_no_match(poll_interval)
 
 
 def wait_for_any_on_screen(
@@ -101,5 +116,5 @@ def wait_for_any_on_screen(
             rect = locate_template(template, threshold, region=region)
             if rect is not None:
                 return index, rect
-        stop_sleep(random.uniform(*poll_interval))
+        _on_no_match(poll_interval)
     return None

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from client import activate_window, close_windows, run_game
-from game import in_game
+from game import in_game, is_in_game
 from game.hero_manager import manager
 from log import logger
 from state.keys import (
@@ -59,57 +59,62 @@ def run_cycle() -> bool:
             return False
 
         # Już visited (np. po restarcie po failu swapu) — pomiń taski, od razu swap.
+        # Wyłączony w panelu: bez tasków, oznacz visited, idź do kolejnego.
         if not manager.is_visited():
-            rss = _run_task(
-                "alliance_rss",
-                alliance_rss,
-                enabled=settings.alliance_rss_enabled,
-                due=is_due(TASK_ALLIANCE_RSS),
-                require_alliance=True,
-            )
-            if rss is False:
-                if not _restart_after_task_fail():
-                    return False
-                continue
+            if not manager.is_hero_enabled():
+                logger.info("hero wyłączony w panelu — pomijam taski")
+                manager.hero_visited()
+            else:
+                rss = _run_task(
+                    "alliance_rss",
+                    alliance_rss,
+                    enabled=settings.alliance_rss_enabled,
+                    due=is_due(TASK_ALLIANCE_RSS),
+                    require_alliance=True,
+                )
+                if rss is False:
+                    if not _restart_after_task_fail():
+                        return False
+                    continue
 
-            # Każdy hero woła pit; gather/building/not_built/skip — wewnątrz taska.
-            pit = _run_task(
-                "alliance_pit",
-                alliance_pit,
-                enabled=settings.alliance_pit_enabled,
-                due=is_due(TASK_ALLIANCE_PIT) or is_wave_active(),
-                require_alliance=True,
-            )
-            if pit is False:
-                if not _restart_after_task_fail():
-                    return False
-                continue
+                # Każdy hero woła pit; gather/building/not_built/skip — wewnątrz taska.
+                pit = _run_task(
+                    "alliance_pit",
+                    alliance_pit,
+                    enabled=settings.alliance_pit_enabled,
+                    due=is_due(TASK_ALLIANCE_PIT) or is_wave_active(),
+                    require_alliance=True,
+                )
+                if pit is False:
+                    if not _restart_after_task_fail():
+                        return False
+                    continue
 
-            ssp_id = _ssp_schedule_id()
-            ssp = _run_task(
-                "scount_sentry_post",
-                scount_sentry_post,
-                enabled=settings.scount_sentry_post_enabled,
-                due=ssp_id is not None and is_due(ssp_id),
-            )
-            if ssp is False:
-                if not _restart_after_task_fail():
-                    return False
-                continue
-            if ssp is True and ssp_id is not None:
-                schedule(ssp_id, _hours_to_sec(settings.ssp_cooldown_h))
+                ssp_id = _ssp_schedule_id()
+                ssp = _run_task(
+                    "scount_sentry_post",
+                    scount_sentry_post,
+                    enabled=settings.scount_sentry_post_enabled,
+                    due=ssp_id is not None and is_due(ssp_id),
+                )
+                if ssp is False:
+                    if not _restart_after_task_fail():
+                        return False
+                    continue
+                if ssp is True and ssp_id is not None:
+                    schedule(ssp_id, _hours_to_sec(settings.ssp_cooldown_h))
 
-            gather = _run_task(
-                "gather_rss",
-                gather_rss,
-                enabled=settings.gather_rss_enabled,
-            )
-            if gather is False:
-                if not _restart_after_task_fail():
-                    return False
-                continue
+                gather = _run_task(
+                    "gather_rss",
+                    gather_rss,
+                    enabled=settings.gather_rss_enabled,
+                )
+                if gather is False:
+                    if not _restart_after_task_fail():
+                        return False
+                    continue
 
-            manager.hero_visited()
+                manager.hero_visited()
 
         # Swap na kolejnego hero / konto.
         swapped = manager.swap_hero()
@@ -133,7 +138,7 @@ def run_cycle() -> bool:
         # Udana zmiana postaci/konta → czyste flagi tasków u nowego hero.
         _reset_hero_task_state()
 
-        # Po swapie — czekamy na przeładowanie, potem fokus; pętla → in_game + current_hero.
+        # Po swapie — czekamy na przeładowanie, potem fokus; pętla → is_in_game + current_hero.
         stop_sleep(float(settings.relogin_focus_delay_sec))
         if not activate_window("game"):
             logger.warning("nie udało się aktywować okna gry po swapie")
@@ -179,6 +184,7 @@ def _run_task(
     if due is False:
         return None
     if require_alliance is True and not manager.is_in_alliance():
+        logger.info("task %s — current_hero nie zapisał sojuszu, pomijam", name)
         return None
     if require_alliance is False and manager.is_in_alliance():
         return None
@@ -207,7 +213,7 @@ def _ssp_schedule_id() -> str | None:
     """Klucz harmonogramu SSP dla zalogowanego hero, albo None."""
     for hero in manager.heroes:
         if hero.logged_in:
-            return scount_sentry_post_schedule_id(hero.email, hero.id)
+            return scount_sentry_post_schedule_id(hero.uid, hero.nick)
     return None
 
 
@@ -231,17 +237,16 @@ def _restart_after_task_fail() -> bool:
 
 def _ensure_current_hero() -> bool:
     """
-    in_game → wykryj zalogowanego hero (main.png).
+    is_in_game → current_hero.
 
-    Przy failu: zamknij grę → uruchom od nowa → jedna dodatkowa próba.
-    False → run_cycle kończy się failiem (main zatrzymuje bota).
+    Obcy nick → swap_hero, potem account_swap (bez restartu gry).
+    Pusty OCR / brak UI → jedna próba: zamknij grę i od nowa.
     """
-    if not activate_window("game"):
-        logger.warning("nie udało się aktywować okna gry przed current_hero")
-    if not in_game():
-        logger.warning("in_game nieudany przed current_hero")
-    elif manager.current_hero():
+    result = _identify_hero()
+    if result is True:
         return True
+    if result is None:
+        return _recover_unknown_hero()
 
     logger.warning("current_hero nieudany — zamykam grę i próbuję raz od nowa")
     if not close_windows("game"):
@@ -250,11 +255,61 @@ def _ensure_current_hero() -> bool:
     if not run_game():
         logger.error("nie udało się uruchomić gry po failu current_hero")
         return False
-    if not in_game():
-        logger.error("in_game nieudany po restarcie gry")
-        return False
-    if manager.current_hero():
+    result = _identify_hero()
+    if result is True:
         return True
+    if result is None:
+        return _recover_unknown_hero()
 
     logger.error("current_hero nieudany po restarcie gry")
+    return False
+
+
+def _identify_hero() -> bool | None:
+    """Przegląd + OCR. True / None / False jak current_hero (albo False gdy nie w grze)."""
+    if not activate_window("game"):
+        logger.warning("nie udało się aktywować okna gry przed current_hero")
+    if not is_in_game():
+        logger.warning("is_in_game nieudany przed current_hero")
+        return False
+    return manager.current_hero()
+
+
+def _recover_unknown_hero() -> bool:
+    """Obcy nick: swap postaci, jak trzeba konto. UI złapane, a brak trafienia → błąd, bez powtórek."""
+    logger.info("obcy nick — swap_hero")
+    swapped = manager.swap_hero()
+    if swapped is True:
+        return _identify_after_swap()
+    if swapped is False:
+        logger.error("swap_hero nieudany przy obcym nicku (UI / potwierdzenie)")
+        return False
+
+    logger.info("obcy nick — brak naszych w slotach, account_swap")
+    acc = manager.account_swap()
+    if acc is True:
+        return _identify_after_swap()
+    if acc is None:
+        logger.error("obcy nick i brak włączonych nieodwiedzonych na liście")
+        return False
+
+    logger.error("account_swap nie znalazł konta (UI było, matching nie) — nie ponawiam")
+    return False
+
+
+def _identify_after_swap() -> bool:
+    """Po udanym swapie: pauza, fokus, znowu current_hero. Nadal obcy → błąd bez pętli."""
+    stop_sleep(float(settings.relogin_focus_delay_sec))
+    if not activate_window("game"):
+        logger.warning("nie udało się aktywować okna gry po swapie (obcy nick)")
+    if not is_in_game():
+        logger.error("is_in_game nieudany po swapie z obcego nicku")
+        return False
+    result = manager.current_hero()
+    if result is True:
+        return True
+    if result is None:
+        logger.error("po swapie nadal nick nie na liście — nie ponawiam")
+        return False
+    logger.error("po swapie current_hero nie odczytał nicku")
     return False
