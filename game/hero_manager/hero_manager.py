@@ -22,7 +22,7 @@ from state.store import INFO_PATH, get_data, save_data
 from .current_hero import CurrentHero, NO_ALLIANCE
 from .hero import Hero
 from .swap import HeroSwap
-from .whitelist import load_whitelist
+from .whitelist import load_whitelist, set_hero_enabled
 
 
 class HeroManager(CurrentHero, HeroSwap):
@@ -31,6 +31,8 @@ class HeroManager(CurrentHero, HeroSwap):
     def __init__(self, heroes: list[Hero]) -> None:
         self.heroes = heroes
         self._miss_streak = 0
+        # Nick, na którego mieliśmy wejść w swap_hero; None = nie sprawdzaj.
+        self._swap_target: str | None = None
         # False po 2× fail account_swap — do restartu procesu bota.
         self._account_swap_enabled = True
         # Przywróć visited z info.json (przeżywa restart procesu).
@@ -49,6 +51,44 @@ class HeroManager(CurrentHero, HeroSwap):
         """Wyłącz zamianę kont do ponownego uruchomienia bota."""
         self._account_swap_enabled = False
         logger.error("account_swap wyłączony — pomijany do ponownego uruchomienia bota")
+
+    def consume_swap_mismatch(self) -> bool:
+        """
+        Po swapie: current != cel → wyłącz cel, True = pomiń taski.
+
+        Trafiony cel albo brak celu (account_swap) → False.
+        """
+        target = self._swap_target
+        self._swap_target = None
+        if not target:
+            return False
+        current = None
+        for hero in self.heroes:
+            if hero.logged_in:
+                current = hero
+                break
+        if current is not None and current.nick.casefold() == target.casefold():
+            return False
+        got = current.nick if current is not None else "?"
+        logger.error(
+            "swap_hero — cel %s, a jesteśmy na %s — wyłączam %s",
+            target,
+            got,
+            target,
+        )
+        self.disable_hero(target)
+        return True
+
+    def disable_hero(self, nick: str) -> None:
+        """enabled=False w pamięci i w heroes.json (jak wyłącznik w panelu)."""
+        for hero in self.heroes:
+            if hero.nick.casefold() != nick.casefold():
+                continue
+            hero.enabled = False
+            set_hero_enabled(hero.nick, hero.uid, False)
+            logger.error("whitelist: wyłączono %s uid=%s", hero.nick, hero.uid)
+            return
+        logger.error("disable_hero — brak %s na liście", nick)
 
     def hero_visited(self) -> None:
         """Oznacz zalogowanego bohatera jako odwiedzonego (+ zapis do info.json)."""

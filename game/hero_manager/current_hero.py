@@ -20,7 +20,7 @@ from log import logger
 from state.stop import check_stop, request_stop, sleep as stop_sleep
 
 from ..view_detector import in_game
-from .hero import Hero
+from .hero import Hero, fold_nick
 
 _CURRENT_HERO_ROUNDS = 5
 _CURRENT_HERO_RETRY_DELAY_SEC = 10.0
@@ -188,13 +188,17 @@ def _read_nick() -> str:
 
 
 def _hero_by_nick(heroes: list[Hero], nick: str) -> Hero | None:
-    """Znajdź hero po nicku (najpierw dokładny, potem bez wielkości liter)."""
+    """Znajdź hero po nicku (dokładny → wielkość liter → kreska 1/l/I)."""
     for hero in heroes:
         if hero.nick == nick:
             return hero
     folded = nick.casefold()
     for hero in heroes:
         if hero.nick.casefold() == folded:
+            return hero
+    ocr_fold = fold_nick(nick)
+    for hero in heroes:
+        if fold_nick(hero.nick) == ocr_fold:
             return hero
     return None
 

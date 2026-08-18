@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 import random
 import sys
+from difflib import SequenceMatcher
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
@@ -21,7 +22,7 @@ from log import logger
 from state.stop import sleep as stop_sleep
 
 from ..navigation import go_to_setting
-from .hero import Hero
+from .hero import Hero, fold_nick
 
 # coord_picker 1920×1080 — wyrównane kolumny/wiersze (lewa 536×318, prawa 1257×285).
 _SWAP_NICK_SLOTS: tuple[tuple[int, int, int, int], ...] = (
@@ -42,6 +43,8 @@ _NICK_ALLOW = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-[
 _UID_SLOT_ALLOW = (
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789|: .-"
 )
+# Poniżej tego OCR jest za daleko od kandydata — nie klikamy w ciemno.
+_MIN_SIMILARITY = 0.75
 
 
 class HeroSwap:
@@ -52,8 +55,10 @@ class HeroSwap:
         Zamień postać, gdy są nieodwiedzeni.
 
         True — swap OK, None — brak kogo odwiedzić / obcy nick bez naszych w slotach, False — błąd UI.
-        OCR nicków w 5 slotach, klik regionu, potem hero_swap_confirm.
+        OCR nicków w 5 slotach: najpierw 100%, potem najbardziej podobny. Cel zapisuje się
+        do sprawdzenia w current_hero (pomyłka → wyłączenie celu).
         """
+        self._swap_target = None
         confirm = _ROOT / "templates" / "navigation" / "hero_swap_confirm.png"
         if not confirm.is_file():
             logger.error("swap_hero — brak %s", confirm)
@@ -84,9 +89,11 @@ class HeroSwap:
         )
         hits: list[tuple[Hero, tuple[int, int, int, int]]] = []
         seen_nicks: set[str] = set()
+        slot_reads: list[tuple[tuple[int, int, int, int], str]] = []
         for i, slot in enumerate(_SWAP_NICK_SLOTS, start=1):
             raw = get_text(slot, _NICK_ALLOW)
             nick = _nick_from_swap_ocr(raw)
+            slot_reads.append((slot, nick))
             hero = _match_candidate(candidates, nick) if nick else None
             if not nick:
                 note = "pusto"
@@ -103,17 +110,27 @@ class HeroSwap:
             hits.append((hero, slot))
 
         if not hits:
-            if uid is None:
-                logger.info(
-                    "swap_hero — w slotach brak nicków z listy (nieznane konto) — account_swap"
+            fuzzy = _best_similar_hit(slot_reads, candidates)
+            if fuzzy is None:
+                if uid is None:
+                    logger.info(
+                        "swap_hero — w slotach brak nicków z listy (nieznane konto) — account_swap"
+                    )
+                    return None
+                logger.error(
+                    "swap_hero — żaden slot nie pasuje do nieodwiedzonych %s (uid %s)",
+                    [hero.nick for hero in candidates],
+                    uid,
                 )
-                return None
-            logger.error(
-                "swap_hero — żaden slot nie pasuje do nieodwiedzonych %s (uid %s)",
-                [hero.nick for hero in candidates],
-                uid,
+                return False
+            hero, slot, score, ocr_nick = fuzzy
+            logger.info(
+                "swap_hero — brak 100%%, przybliżony OCR %r ≈ %s (%.2f)",
+                ocr_nick,
+                hero.nick,
+                score,
             )
-            return False
+            hits.append((hero, slot))
 
         hero, slot = random.choice(hits)
         logger.info(
@@ -124,6 +141,7 @@ class HeroSwap:
         click_region(*slot, margin=0.15)
         stop_sleep(random.uniform(0.7, 1.2))
         if find_and_click(confirm, timeout=30.0):
+            self._swap_target = hero.nick
             logger.info("swap_hero — kliknięto %s (uid %s)", hero.nick, hero.uid)
             return True
 
@@ -138,6 +156,7 @@ class HeroSwap:
         True — OK, None — brak innych kont, False — błąd.
         Wejście: hero_swap_menu → kroki UI → OCR uid w slotach.
         """
+        self._swap_target = None
         if not self._account_swap_enabled:
             logger.info("account_swap — wyłączony (wcześniejszy błąd), koniec zamiany kont")
             return None
@@ -251,6 +270,31 @@ def _match_candidate(candidates: list[Hero], nick: str) -> Hero | None:
         if hero.nick.casefold() == folded:
             return hero
     return None
+
+
+def _nick_similarity(ocr_nick: str, hero_nick: str) -> float:
+    """0–1: zwykłe podobieństwo albo po złożeniu 1/l/I — bierzemy lepsze."""
+    raw = SequenceMatcher(None, ocr_nick.casefold(), hero_nick.casefold()).ratio()
+    folded = SequenceMatcher(None, fold_nick(ocr_nick), fold_nick(hero_nick)).ratio()
+    return max(raw, folded)
+
+
+def _best_similar_hit(
+    slot_reads: list[tuple[tuple[int, int, int, int], str]],
+    candidates: list[Hero],
+) -> tuple[Hero, tuple[int, int, int, int], float, str] | None:
+    """Najbardziej podobny OCR do kandydata. None gdy pusto albo za słabe."""
+    best: tuple[float, Hero, tuple[int, int, int, int], str] | None = None
+    for slot, nick in slot_reads:
+        if not nick:
+            continue
+        for hero in candidates:
+            score = _nick_similarity(nick, hero.nick)
+            if best is None or score > best[0]:
+                best = (score, hero, slot, nick)
+    if best is None or best[0] < _MIN_SIMILARITY:
+        return None
+    return best[1], best[2], best[0], best[3]
 
 
 def _uid_from_slot_ocr(raw: str | None) -> str:

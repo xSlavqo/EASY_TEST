@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 
+def fold_nick(nick: str) -> str:
+    """OCR: kreska 1 / l / I to ten sam znak (I po casefold → i)."""
+    return nick.casefold().replace("l", "1").replace("i", "1")
+
+
 class Hero:
     """Jedna postać z whitelist: nick (unikalny) + uid (konto, może mieć wiele nicków)."""
 

@@ -58,9 +58,14 @@ def run_cycle() -> bool:
             logger.warning("run_cycle — _ensure_current_hero nieudany")
             return False
 
+        # Swap na inny nick niż cel (OCR 1/l) — cel wyłączony, bez tasków, kolejny swap.
+        skip_tasks = manager.consume_swap_mismatch()
+        if skip_tasks:
+            logger.info("swap_hero — inny hero niż cel, pomijam taski")
+
         # Już visited (np. po restarcie po failu swapu) — pomiń taski, od razu swap.
         # Wyłączony w panelu: bez tasków, oznacz visited, idź do kolejnego.
-        if not manager.is_visited():
+        if not skip_tasks and not manager.is_visited():
             if not manager.is_hero_enabled():
                 logger.info("hero wyłączony w panelu — pomijam taski")
                 manager.hero_visited()
