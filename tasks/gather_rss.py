@@ -41,6 +41,7 @@ _LEVEL_CLICK_DELAY = (0.05, 0.14)
 _ICON_CLICK_MARGIN = 0.15
 _CLICK_TIMEOUT = 30.0
 _OPTIONAL_CLICK_TIMEOUT = 6.0
+_FIND_RESULT_TIMEOUT = (3.0, 5.0)
 _LEVEL_CLICK_TIMEOUT = 8.0
 _MAX_LEGION_SENDS = 5
 _MAX_SEND_RETRIES = 3
@@ -173,13 +174,26 @@ def _try_send_one_legion(
     else:
         stop_sleep(random.uniform(*_ACTION_DELAY))
 
-    if not find_and_click(_RSS_FIND, timeout=_CLICK_TIMEOUT):
-        logger.error("nie znaleziono rss_find.png")
-        return "failed", set_rss
-    stop_sleep(random.uniform(*_ACTION_DELAY))
+    # SZUKAJ → krótko czekaj na kolejny krok. Brak złoża: ten sam surowiec,
+    # poziom -1, znowu SZUKAJ (bez wychodzenia z panelu).
+    for _ in range(_RSS_LEVEL_MAX):
+        if not find_and_click(_RSS_FIND, timeout=_CLICK_TIMEOUT):
+            logger.error("nie znaleziono rss_find.png")
+            return "failed", set_rss
+        stop_sleep(random.uniform(*_ACTION_DELAY))
 
-    if not find_and_click(_RSS_PREPARE_TO_GATHER, timeout=_CLICK_TIMEOUT):
-        logger.error("nie znaleziono rss_prepare_to_gather.png")
+        if find_and_click(
+            _RSS_PREPARE_TO_GATHER,
+            timeout=random.uniform(*_FIND_RESULT_TIMEOUT),
+        ):
+            break
+
+        logger.info("brak kolejnego kroku po SZUKAJ — obniżam poziom o 1")
+        if not _ensure_rss_level(resource[2], delta=-1):
+            logger.error("nie udało się obniżyć poziomu RSS")
+            return "failed", set_rss
+    else:
+        logger.error("po zejściu z poziomem nadal brak rss_prepare_to_gather")
         return "failed", set_rss
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
@@ -207,16 +221,15 @@ def _try_send_one_legion(
     return "sent", set_rss
 
 
-def _ensure_rss_level(resource_key: str) -> bool:
+def _ensure_rss_level(resource_key: str, *, delta: int = 0) -> bool:
     """
-    Ustaw poziom wyszukiwania RSS według settings.gather_rss_level.
+    Ustaw poziom wyszukiwania RSS.
+
+    Bez delta: cel z settings.gather_rss_level.
+    Z delta: cel = aktualny OCR + delta (np. -1), bez zmiany surowca.
 
     OCR raz → znajdź +/- raz → kliknij region N razy → OCR potwierdza.
     """
-    target = max(
-        _RSS_LEVEL_MIN,
-        min(_RSS_LEVEL_MAX, int(settings.gather_rss_level)),
-    )
     if _level_ocr_region(resource_key) is None:
         logger.error("brak regionu OCR poziomu dla surowca %s", resource_key)
         return False
@@ -224,6 +237,19 @@ def _ensure_rss_level(resource_key: str) -> bool:
     current = _read_rss_level(resource_key)
     if current is None:
         logger.error("OCR poziomu RSS nieudany (przed ustawieniem)")
+        return False
+
+    if delta != 0:
+        target = current + delta
+    else:
+        target = int(settings.gather_rss_level)
+    target = max(_RSS_LEVEL_MIN, min(_RSS_LEVEL_MAX, target))
+    if delta != 0 and target == current:
+        logger.error(
+            "poziom RSS już na granicy (%s), nie da się zmienić o %s",
+            current,
+            delta,
+        )
         return False
 
     diff = target - current

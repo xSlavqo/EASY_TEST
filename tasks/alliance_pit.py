@@ -30,10 +30,15 @@ from input import (
     wait_for_any_on_screen,
 )
 from log import logger
-from state.keys import ALLIANCE_PIT_STATUS, TASK_ALLIANCE_PIT
+from state.keys import (
+    ALLIANCE_PIT_STATUS,
+    ALLIANCE_PIT_WAVE_ACTIVE,
+    ALLIANCE_PIT_WAVE_KIND,
+    TASK_ALLIANCE_PIT,
+)
 from state.schedule import schedule
 from state.stop import sleep as stop_sleep
-from state.store import INFO_PATH, save_data
+from state.store import INFO_PATH, get_data, save_data
 
 _ALLIANCE_DIR = _ROOT / "templates" / "alliance"
 _ALLY_TERRITORY_MENU = _ALLIANCE_DIR / "ally_territory_menu.png"
@@ -140,6 +145,8 @@ def alliance_pit() -> bool:
         save_data(INFO_PATH, ALLIANCE_PIT_STATUS, "not_built")
         _wave_active = False
         _wave_kind = None
+        save_data(INFO_PATH, ALLIANCE_PIT_WAVE_ACTIVE, False)
+        save_data(INFO_PATH, ALLIANCE_PIT_WAVE_KIND, None)
         _ocr_done = False
         _skip_rest = True
         logger.warning("pit: not_built — skip akcji u kolejnych hero")
@@ -255,6 +262,7 @@ def _if_gather(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> bool:
     if lock_sec is not None:
         schedule(TASK_ALLIANCE_PIT, lock_sec + _LOCK_BUFFER_SEC)
     _wave_active = True
+    save_data(INFO_PATH, ALLIANCE_PIT_WAVE_ACTIVE, True)
     return True
 
 
@@ -280,6 +288,7 @@ def _if_building(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
             logger.warning("OCR pitu — nieznany rodzaj: %r", panel_raw[:120])
         else:
             _wave_kind = kind
+            save_data(INFO_PATH, ALLIANCE_PIT_WAVE_KIND, kind)
             _ocr_done = True
 
         save_data(INFO_PATH, ALLIANCE_PIT_STATUS, "building")
@@ -310,6 +319,7 @@ def _if_building(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
     _wave_active = True
+    save_data(INFO_PATH, ALLIANCE_PIT_WAVE_ACTIVE, True)
     return True
 
 
@@ -340,15 +350,21 @@ def _if_occupied(btn_rect: tuple[int, int, int, int], *, read_lock: bool) -> boo
 
     _wave_active = False
     _wave_kind = None
+    save_data(INFO_PATH, ALLIANCE_PIT_WAVE_ACTIVE, False)
+    save_data(INFO_PATH, ALLIANCE_PIT_WAVE_KIND, None)
     _skip_rest = True
     return True
 
 
 def reset_cycle_state() -> None:
-    """Wyzeruj falę/OCR/skip na start cyklu (woła bot/cycle)."""
+    """Przywróć stan fali z dysku na start cyklu (woła bot/cycle).
+
+    wave_active / wave_kind przeżywają restart bota — odczytujemy
+    je z pliku, żeby kolejni hero dalej wysyłali legiony.
+    """
     global _wave_active, _wave_kind, _ocr_done, _skip_rest
-    _wave_active = False
-    _wave_kind = None
+    _wave_active = bool(get_data(INFO_PATH, ALLIANCE_PIT_WAVE_ACTIVE, False))
+    _wave_kind = get_data(INFO_PATH, ALLIANCE_PIT_WAVE_KIND, None)
     _ocr_done = False
     _skip_rest = False
 

@@ -7,6 +7,8 @@ TASK_SCOUNT_SENTRY_POST = "task.scount_sentry_post"
 
 # Stan pitu z ostatniego odczytu (not_built / gather / building / occupied).
 ALLIANCE_PIT_STATUS = "task.alliance_pit.status"
+ALLIANCE_PIT_WAVE_ACTIVE = "task.alliance_pit.wave_active"
+ALLIANCE_PIT_WAVE_KIND = "task.alliance_pit.wave_kind"
 
 # Lista odwiedzonych w bieżącym cyklu: ["uid/nick", ...].
 HEROES_VISITED = "heroes.visited"
