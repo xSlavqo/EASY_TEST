@@ -188,7 +188,6 @@ def _try_send_one_legion(
         ):
             break
 
-        logger.info("brak kolejnego kroku po SZUKAJ — obniżam poziom o 1")
         if not _ensure_rss_level(resource[2], delta=-1):
             logger.error("nie udało się obniżyć poziomu RSS")
             return "failed", set_rss

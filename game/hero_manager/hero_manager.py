@@ -40,8 +40,6 @@ class HeroManager(CurrentHero, HeroSwap):
         keys = {str(x) for x in raw} if isinstance(raw, list) else set()
         for hero in self.heroes:
             hero.visited = f"{hero.uid}/{hero.nick}" in keys
-        if keys:
-            logger.info("visited z dysku: %s", ", ".join(sorted(keys)))
 
     @property
     def visited_ids(self) -> list[str]:
@@ -128,19 +126,20 @@ class HeroManager(CurrentHero, HeroSwap):
         for hero in self.heroes:
             if hero.logged_in:
                 hero.alliance = NO_ALLIANCE
-                logger.info(
-                    "brak sojuszu u %s — taski sojuszu wyłączone u tej postaci",
-                    hero.nick,
-                )
                 return
         logger.warning("mark_not_in_alliance — brak zalogowanego hero")
 
-    def is_hero_enabled(self) -> bool:
-        """Czy zalogowany hero jest włączony w panelu (nie zablokowany)."""
+    def logged_in_hero(self) -> Hero | None:
+        """Bieżąca postać po current_hero(), albo None."""
         for hero in self.heroes:
             if hero.logged_in:
-                return hero.enabled
-        return False
+                return hero
+        return None
+
+    def is_hero_enabled(self) -> bool:
+        """Czy zalogowany hero jest włączony w panelu (nie zablokowany)."""
+        hero = self.logged_in_hero()
+        return hero.enabled if hero is not None else False
 
     def reload_from_whitelist(self) -> None:
         """
@@ -157,15 +156,18 @@ class HeroManager(CurrentHero, HeroSwap):
         for entry in items:
             key = (str(entry["uid"]), str(entry["nick"]))
             hero = old.get(key)
+            tasks = dict(entry.get("tasks", {}))
             if hero is None:
                 hero = Hero(
                     str(entry["nick"]),
                     str(entry["uid"]),
                     enabled=bool(entry["enabled"]),
+                    tasks=tasks,
                 )
                 hero.visited = f"{hero.uid}/{hero.nick}" in visited_keys
             else:
                 hero.enabled = bool(entry["enabled"])
+                hero.tasks = tasks
             new_list.append(hero)
 
         self.heroes = new_list
@@ -179,12 +181,15 @@ class HeroManager(CurrentHero, HeroSwap):
 
 
 _heroes = [
-    Hero(entry["nick"], entry["uid"], enabled=bool(entry["enabled"]))
+    Hero(
+        entry["nick"],
+        entry["uid"],
+        enabled=bool(entry["enabled"]),
+        tasks=dict(entry.get("tasks", {})),
+    )
     for entry in load_whitelist()
 ]
-if _heroes:
-    logger.info("whitelist: %s postaci", len(_heroes))
-else:
+if not _heroes:
     logger.warning("whitelist pusta — current_hero nie dopasuje nicku")
 
 manager = HeroManager(_heroes)

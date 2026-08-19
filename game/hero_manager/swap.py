@@ -71,10 +71,6 @@ class HeroSwap:
             if hero.enabled and not hero.visited and (uid is None or hero.uid == uid)
         ]
         if not candidates:
-            if uid is None:
-                logger.info("swap_hero — nieznane konto i brak nieodwiedzonych na liście")
-            else:
-                logger.info("swap_hero — brak nieodwiedzonych na uid %s (visited: %s)", uid, self.visited_ids)
             return None
 
         if not _open_hero_swap_menu(
@@ -82,28 +78,14 @@ class HeroSwap:
         ):
             return False
 
-        logger.info(
-            "swap_hero — OCR 5 slotów, kandydaci %s (uid %s)",
-            [hero.nick for hero in candidates],
-            uid,
-        )
         hits: list[tuple[Hero, tuple[int, int, int, int]]] = []
         seen_nicks: set[str] = set()
         slot_reads: list[tuple[tuple[int, int, int, int], str]] = []
-        for i, slot in enumerate(_SWAP_NICK_SLOTS, start=1):
+        for slot in _SWAP_NICK_SLOTS:
             raw = get_text(slot, _NICK_ALLOW)
             nick = _nick_from_swap_ocr(raw)
             slot_reads.append((slot, nick))
             hero = _match_candidate(candidates, nick) if nick else None
-            if not nick:
-                note = "pusto"
-            elif hero is None:
-                note = "pominięty"
-            elif hero.nick in seen_nicks:
-                note = "duplikat"
-            else:
-                note = "kandydat"
-            logger.info("swap_hero — slot %s OCR %r → nick %r (%s)", i, raw, nick, note)
             if hero is None or hero.nick in seen_nicks:
                 continue
             seen_nicks.add(hero.nick)
@@ -113,9 +95,6 @@ class HeroSwap:
             fuzzy = _best_similar_hit(slot_reads, candidates)
             if fuzzy is None:
                 if uid is None:
-                    logger.info(
-                        "swap_hero — w slotach brak nicków z listy (nieznane konto) — account_swap"
-                    )
                     return None
                 logger.error(
                     "swap_hero — żaden slot nie pasuje do nieodwiedzonych %s (uid %s)",
@@ -123,26 +102,14 @@ class HeroSwap:
                     uid,
                 )
                 return False
-            hero, slot, score, ocr_nick = fuzzy
-            logger.info(
-                "swap_hero — brak 100%%, przybliżony OCR %r ≈ %s (%.2f)",
-                ocr_nick,
-                hero.nick,
-                score,
-            )
+            hero, slot, _, _ = fuzzy
             hits.append((hero, slot))
 
         hero, slot = random.choice(hits)
-        logger.info(
-            "swap_hero — wybór %s spośród %s",
-            hero.nick,
-            [item.nick for item, _ in hits],
-        )
         click_region(*slot, margin=0.15)
         stop_sleep(random.uniform(0.7, 1.2))
         if find_and_click(confirm, timeout=30.0):
             self._swap_target = hero.nick
-            logger.info("swap_hero — kliknięto %s (uid %s)", hero.nick, hero.uid)
             return True
 
         logger.error("swap_hero — kliknięto %s, ale brak potwierdzenia", hero.nick)
@@ -158,7 +125,6 @@ class HeroSwap:
         """
         self._swap_target = None
         if not self._account_swap_enabled:
-            logger.info("account_swap — wyłączony (wcześniejszy błąd), koniec zamiany kont")
             return None
 
         current = self._current_uid()
@@ -173,10 +139,6 @@ class HeroSwap:
             }
         )
         if not other_uids:
-            logger.info(
-                "account_swap — brak innych kont z nieodwiedzonych (bieżące uid: %s)",
-                current,
-            )
             return None
 
         if not _open_hero_swap_menu(
@@ -194,17 +156,14 @@ class HeroSwap:
 
         # OCR slotów → lewa strona „|” = uid → klik → START.
         clicked_uid: str | None = None
-        for i, slot in enumerate(_ACCOUNT_UID_SLOTS, start=1):
+        for slot in _ACCOUNT_UID_SLOTS:
             raw = get_text(slot, _UID_SLOT_ALLOW, contrast=True)
-            parsed = _uid_from_slot_ocr(raw)
-            logger.info("account_swap — slot %s OCR %r → uid %r", i, raw, parsed)
             matched = _uid_in_ocr(raw, other_uids)
             if matched is None:
                 continue
             click_region(*slot, margin=0.15)
             stop_sleep(random.uniform(0.5, 1.0))
             clicked_uid = matched
-            logger.info("account_swap — kliknięto uid %s", matched)
             break
 
         if clicked_uid is None:

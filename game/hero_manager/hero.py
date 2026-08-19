@@ -11,10 +11,19 @@ def fold_nick(nick: str) -> str:
 class Hero:
     """Jedna postać z whitelist: nick (unikalny) + uid (konto, może mieć wiele nicków)."""
 
-    def __init__(self, nick: str, uid: str, *, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        nick: str,
+        uid: str,
+        *,
+        enabled: bool = True,
+        tasks: dict[str, bool] | None = None,
+    ) -> None:
         self.nick = nick
         self.uid = uid
         self.enabled = enabled
+        # Brak klucza = domyślnie włączone (gdy global też wł.).
+        self.tasks: dict[str, bool] = dict(tasks or {})
         self.logged_in = False
         self.visited = False
         # None = jeszcze nie odczytane; "brak" = OCR "-" (bez sojuszu).

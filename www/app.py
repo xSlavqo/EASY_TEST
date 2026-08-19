@@ -82,8 +82,8 @@ def run_www(
             "md:flex-row md:flex-nowrap md:h-screen bg-[#2d2d2d]"
         ):
             build_status_column(on_start, on_stop)
-            build_heroes_panel()
-            build_settings_panel()
+            refresh_heroes = build_heroes_panel()
+            build_settings_panel(on_global_task_change=refresh_heroes)
 
     ui.run(
         host=host,

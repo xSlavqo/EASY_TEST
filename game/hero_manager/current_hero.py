@@ -155,11 +155,6 @@ class CurrentHero:
             press_key("esc")
             stop_sleep(random.uniform(*_HERO_REVIEW_ESC_DELAY))
             if find_on_screen(_SETTING_BUTTON, timeout=_HERO_REVIEW_SEARCH_TIMEOUT):
-                logger.info(
-                    "current_hero — setting_button po Esc (próba %s/%s)",
-                    attempt + 1,
-                    _HERO_REVIEW_MAX_ESC,
-                )
                 return True
 
         logger.error(

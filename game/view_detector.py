@@ -83,22 +83,10 @@ def is_in_game(*, timeout: float = _CITY_READY_TIMEOUT) -> bool:
         stop_sleep(random.uniform(*_UI_SETTLE_DELAY))
         view, _, _ = _score_view(screenshot(_VIEW_REGION))
         if view is not None:
-            logger.info(
-                "is_in_game — %s po Esc (próba %s/%s)",
-                view.value,
-                attempt + 1,
-                _CITY_READY_MAX_ESC,
-            )
             return True
         if dismiss_popups(timeout=0.8):
             view, _, _ = _score_view(screenshot(_VIEW_REGION))
             if view is not None:
-                logger.info(
-                    "is_in_game — %s po popupie (próba %s/%s)",
-                    view.value,
-                    attempt + 1,
-                    _CITY_READY_MAX_ESC,
-                )
                 return True
     logger.error(
         "is_in_game — Esc nie odsłonił miasta ani mapy po %s próbach",

@@ -66,13 +66,12 @@ def dismiss_popups(
 
 def _close_one() -> bool:
     """Kliknij pierwszy znaleziony przycisk z _POPUPS. True = kliknięto."""
-    for template, name in _POPUPS:
+    for template, _ in _POPUPS:
         if not template.is_file():
             logger.warning("popups — brak pliku szablonu: %s", template)
             continue
         rect = locate_template(template, _MATCH_THRESHOLD)
         if rect is not None:
             click_region(*rect)
-            logger.info("popups — zamknięto %s", name)
             return True
     return False

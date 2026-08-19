@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from nicegui import ui
 
 from state.settings import settings
+from state.task_defs import TASK_DEFS
 
-# (klucz w config.json, etykieta w panelu)
-_CHECKS = (
+# Inne przełączniki (poza taskami z TASK_DEFS).
+_OTHER_CHECKS = (
     ("close_game_after_cycle", "Zamykaj grę po cyklu"),
-    ("alliance_rss_enabled", "Odbierz surowce sojuszu"),
-    ("alliance_pit_enabled", "Centrum zasobów przymierza"),
-    ("scount_sentry_post_enabled", "Sentry Post (próby scouta)"),
-    ("gather_rss_enabled", "Zbieranie RSS"),
+)
+
+# Szczegóły gather_rss — tylko globalnie.
+_GATHER_RSS_CHECKS = (
     ("gather_rss_gold", "RSS: złoto"),
     ("gather_rss_wood", "RSS: drewno"),
     ("gather_rss_ore", "RSS: ruda"),
@@ -45,21 +48,43 @@ def _clamp_cycle_interval_pair() -> None:
         settings.cycle_interval_max_h = lo
 
 
-def build_settings_panel() -> None:
+def build_settings_panel(
+    on_global_task_change: Callable[[], None] | None = None,
+) -> None:
     """Prawa karta: przełączniki tasków i liczby z config.json."""
     with ui.card().classes(
         "w-full md:w-96 shrink-0 md:h-full overflow-auto bg-[#383838]"
     ):
         ui.label("Ustawienia").classes("text-subtitle1")
-        for key, label in _CHECKS:
 
-            def _on_toggle(e, k: str = key) -> None:
+        ui.label("Taski — globalnie").classes("text-subtitle2 mt-1")
+        ui.label("wyłączone tutaj = nikt nie robi").classes(
+            "text-grey text-caption"
+        )
+        for task_def in TASK_DEFS:
+
+            def _on_task_toggle(e, k: str = task_def.settings_key) -> None:
+                setattr(settings, k, bool(e.value))
+                if on_global_task_change is not None:
+                    on_global_task_change()
+
+            ui.checkbox(
+                task_def.label,
+                value=bool(getattr(settings, task_def.settings_key)),
+                on_change=_on_task_toggle,
+            )
+
+        ui.separator().classes("my-2")
+        ui.label("Gather RSS — szczegóły").classes("text-subtitle2")
+        for key, label in _GATHER_RSS_CHECKS:
+
+            def _on_gather_toggle(e, k: str = key) -> None:
                 setattr(settings, k, bool(e.value))
 
             ui.checkbox(
                 label,
                 value=bool(getattr(settings, key)),
-                on_change=_on_toggle,
+                on_change=_on_gather_toggle,
             )
 
         with ui.row().classes("items-center gap-2 flex-wrap mt-2"):
@@ -83,6 +108,19 @@ def build_settings_panel() -> None:
                 step=1,
                 on_change=_on_level,
             ).props("dense outlined").classes("w-24")
+
+        ui.separator().classes("my-2")
+        ui.label("Inne").classes("text-subtitle2")
+        for key, label in _OTHER_CHECKS:
+
+            def _on_other_toggle(e, k: str = key) -> None:
+                setattr(settings, k, bool(e.value))
+
+            ui.checkbox(
+                label,
+                value=bool(getattr(settings, key)),
+                on_change=_on_other_toggle,
+            )
 
         # Harmonogram — godziny (bot czyta przy następnym schedule).
         ui.separator().classes("my-3")

@@ -128,7 +128,6 @@ def alliance_pit() -> bool:
         return True
 
     if not manager.is_in_alliance():
-        logger.info("alliance_pit — current_hero nie zapisał sojuszu, nie wchodzę")
         return True
 
     # OCR tylko gdy jeszcze nie udało się odczytać timera/kind.
@@ -139,7 +138,6 @@ def alliance_pit() -> bool:
         logger.warning("alliance_pit — błąd nawigacji")
         return False
     if available == "no_alliance":
-        logger.info("alliance_pit — hero bez sojuszu, pomijam")
         return True
     if available == "not_built":
         save_data(INFO_PATH, ALLIANCE_PIT_STATUS, "not_built")

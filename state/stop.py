@@ -89,4 +89,3 @@ def start_hotkey_listener() -> None:
         return
 
     threading.Thread(target=_hotkey_listener, name="stop-hotkey", daemon=True).start()
-    logger.info("skrót zatrzymania: F9 (natychmiastowe)")

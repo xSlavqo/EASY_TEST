@@ -30,12 +30,10 @@ _AFTER_COLLECT_DELAY = (2.0, 3.0)
 def alliance_rss() -> bool:
     """True = zebrano albo skip (brak sojuszu / DOŁĄCZ). False = błąd UI."""
     if not manager.is_in_alliance():
-        logger.info("alliance_rss — current_hero nie zapisał sojuszu, nie wchodzę")
         return True
     if not go_to_alliance_menu():
         return False
     if not manager.is_in_alliance():
-        logger.info("alliance_rss — wyłącznik DOŁĄCZ, pomijam")
         return True
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
