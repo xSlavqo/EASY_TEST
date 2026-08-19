@@ -144,13 +144,6 @@ def _detect_view(*, max_attempts: int = _MAX_DETECT_ATTEMPTS) -> GameView:
             )
             continue
 
-        logger.warning(
-            "in_game — brak miasta/mapy, Esc (próba %s/%s, city=%.3f map=%.3f)",
-            attempt + 1,
-            max_attempts,
-            city_score,
-            map_score,
-        )
         press_key("esc")
         stop_sleep(random.uniform(*_UI_SETTLE_DELAY))
 

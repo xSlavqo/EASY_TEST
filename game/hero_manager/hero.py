@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import re
+
 
 def fold_nick(nick: str) -> str:
-    """OCR: kreska 1 / l / I to ten sam znak (I po casefold → i)."""
-    return nick.casefold().replace("l", "1").replace("i", "1")
+    """OCR: 1/l/I oraz o/0 przy cyfrach traktujemy jak ten sam znak."""
+    s = nick.casefold().replace("l", "1").replace("i", "1")
+    s = re.sub(r"(?<=\d)o", "0", s)
+    s = re.sub(r"o(?=\d)", "0", s)
+    return s
 
 
 class Hero:

@@ -183,7 +183,7 @@ def _read_nick() -> str:
 
 
 def _hero_by_nick(heroes: list[Hero], nick: str) -> Hero | None:
-    """Znajdź hero po nicku (dokładny → wielkość liter → kreska 1/l/I)."""
+    """Znajdź hero po nicku (dokładny → wielkość liter → fold_nick)."""
     for hero in heroes:
         if hero.nick == nick:
             return hero

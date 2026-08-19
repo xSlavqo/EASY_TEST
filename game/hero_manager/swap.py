@@ -220,7 +220,7 @@ def _nick_from_swap_ocr(raw: str | None) -> str:
 
 
 def _match_candidate(candidates: list[Hero], nick: str) -> Hero | None:
-    """Dopasuj odczytany nick do nieodwiedzonego hero (bez wielkości liter)."""
+    """Dopasuj odczytany nick (dokładny → wielkość liter → fold_nick)."""
     for hero in candidates:
         if hero.nick == nick:
             return hero
@@ -228,11 +228,15 @@ def _match_candidate(candidates: list[Hero], nick: str) -> Hero | None:
     for hero in candidates:
         if hero.nick.casefold() == folded:
             return hero
+    ocr_fold = fold_nick(nick)
+    for hero in candidates:
+        if fold_nick(hero.nick) == ocr_fold:
+            return hero
     return None
 
 
 def _nick_similarity(ocr_nick: str, hero_nick: str) -> float:
-    """0–1: zwykłe podobieństwo albo po złożeniu 1/l/I — bierzemy lepsze."""
+    """0–1: zwykłe podobieństwo albo po fold_nick — bierzemy lepsze."""
     raw = SequenceMatcher(None, ocr_nick.casefold(), hero_nick.casefold()).ratio()
     folded = SequenceMatcher(None, fold_nick(ocr_nick), fold_nick(hero_nick)).ratio()
     return max(raw, folded)
