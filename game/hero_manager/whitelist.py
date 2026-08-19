@@ -10,6 +10,10 @@ from state.store import get_data, save_data
 _ROOT = Path(__file__).resolve().parent.parent.parent
 HEROES_PATH = _ROOT / "data" / "heroes.json"
 
+GATHER_RSS_LEVEL_MIN = 1
+GATHER_RSS_LEVEL_MAX = 10
+DEFAULT_GATHER_RSS_LEVEL = 8
+
 
 def add_hero(nick: str, uid: str) -> bool:
     """Dopisz parę nick+uid. False gdy puste pola, uid nie z cyfr albo duplikat."""
@@ -21,7 +25,14 @@ def add_hero(nick: str, uid: str) -> bool:
     for entry in items:
         if entry["uid"] == uid and entry["nick"] == nick:
             return False
-    items.append({"uid": uid, "nick": nick, "enabled": True})
+    items.append(
+        {
+            "uid": uid,
+            "nick": nick,
+            "enabled": True,
+            "gather_rss_level": DEFAULT_GATHER_RSS_LEVEL,
+        }
+    )
     save_data(HEROES_PATH, "whitelist", items)
     return True
 
@@ -46,6 +57,20 @@ def set_hero_enabled(nick: str, uid: str, enabled: bool) -> None:
     save_data(HEROES_PATH, "whitelist", items)
 
 
+def set_hero_gather_rss_level(nick: str, uid: str, level: int) -> None:
+    """Ustaw poziom nodów RSS (1–10) u postaci."""
+    level = max(
+        GATHER_RSS_LEVEL_MIN,
+        min(GATHER_RSS_LEVEL_MAX, int(level)),
+    )
+    items = load_whitelist()
+    for entry in items:
+        if entry["uid"] == uid and entry["nick"] == nick:
+            entry["gather_rss_level"] = level
+            break
+    save_data(HEROES_PATH, "whitelist", items)
+
+
 def set_hero_task(nick: str, uid: str, task_id: str, enabled: bool) -> None:
     """Włącz / wyłącz pojedynczy task u postaci."""
     if task_id not in TASK_IDS:
@@ -58,6 +83,17 @@ def set_hero_task(nick: str, uid: str, task_id: str, enabled: bool) -> None:
             entry["tasks"] = tasks
             break
     save_data(HEROES_PATH, "whitelist", items)
+
+
+def _parse_gather_rss_level(raw: object) -> int:
+    """Poziom nodów RSS z JSON — 1..10 albo domyślnie."""
+    if raw is None:
+        return DEFAULT_GATHER_RSS_LEVEL
+    try:
+        level = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_GATHER_RSS_LEVEL
+    return max(GATHER_RSS_LEVEL_MIN, min(GATHER_RSS_LEVEL_MAX, level))
 
 
 def _parse_tasks(raw: object) -> dict[str, bool]:
@@ -90,7 +126,13 @@ def load_whitelist() -> list[dict]:
         if enabled is not True and enabled is not False:
             enabled = True
         tasks = _parse_tasks(entry.get("tasks"))
-        item: dict = {"uid": uid, "nick": nick, "enabled": bool(enabled)}
+        gather_rss_level = _parse_gather_rss_level(entry.get("gather_rss_level"))
+        item: dict = {
+            "uid": uid,
+            "nick": nick,
+            "enabled": bool(enabled),
+            "gather_rss_level": gather_rss_level,
+        }
         if tasks:
             item["tasks"] = tasks
         items.append(item)

@@ -23,12 +23,15 @@ class Hero:
         *,
         enabled: bool = True,
         tasks: dict[str, bool] | None = None,
+        gather_rss_level: int = 8,
     ) -> None:
         self.nick = nick
         self.uid = uid
         self.enabled = enabled
         # Brak klucza = domyślnie włączone (gdy global też wł.).
         self.tasks: dict[str, bool] = dict(tasks or {})
+        # Poziom nodów RSS (1–10) — osobno dla każdej postaci.
+        self.gather_rss_level = gather_rss_level
         self.logged_in = False
         self.visited = False
         # None = jeszcze nie odczytane; "brak" = OCR "-" (bez sojuszu).

@@ -8,10 +8,13 @@ from nicegui import ui
 
 from game.hero_manager import manager
 from game.hero_manager.whitelist import (
+    GATHER_RSS_LEVEL_MAX,
+    GATHER_RSS_LEVEL_MIN,
     add_hero,
     load_whitelist,
     remove_hero,
     set_hero_enabled,
+    set_hero_gather_rss_level,
     set_hero_task,
 )
 from log import logger
@@ -106,6 +109,37 @@ def build_heroes_panel() -> Callable[[], None]:
                                     ui.icon("info").classes(
                                         "text-grey text-xs"
                                     ).tooltip("wyłączone globalnie")
+
+                        with ui.row().classes("items-center gap-2 ml-1 mt-1"):
+                            ui.label("RSS: poziom nodów").classes("text-caption")
+
+                            def _on_rss_level(
+                                e,
+                                n=nick,
+                                u=uid,
+                            ) -> None:
+                                try:
+                                    level = int(e.value)
+                                except (TypeError, ValueError):
+                                    return
+                                set_hero_gather_rss_level(n, u, level)
+                                manager.reload_from_whitelist()
+                                logger.info(
+                                    "whitelist: %s RSS poziom %s (%s)",
+                                    n,
+                                    level,
+                                    u,
+                                )
+
+                            rss_num = ui.number(
+                                value=int(entry.get("gather_rss_level", 8)),
+                                min=GATHER_RSS_LEVEL_MIN,
+                                max=GATHER_RSS_LEVEL_MAX,
+                                step=1,
+                                on_change=_on_rss_level,
+                            ).props("dense outlined").classes("w-20")
+                            if not enabled:
+                                rss_num.disable()
 
     def _on_add_hero() -> None:
         nick = str(nick_in.value or "").strip()

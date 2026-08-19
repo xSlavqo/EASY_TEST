@@ -20,7 +20,6 @@ _DEFAULTS: dict[str, Any] = {
     "gather_rss_gold": True,
     "gather_rss_wood": True,
     "gather_rss_ore": True,
-    "gather_rss_level": 8,
     # Harmonogram (godziny) — cykl bota i cooldowny tasków.
     "cycle_interval_min_h": 4.0,
     "cycle_interval_max_h": 5.0,

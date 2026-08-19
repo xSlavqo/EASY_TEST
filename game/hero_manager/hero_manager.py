@@ -157,17 +157,20 @@ class HeroManager(CurrentHero, HeroSwap):
             key = (str(entry["uid"]), str(entry["nick"]))
             hero = old.get(key)
             tasks = dict(entry.get("tasks", {}))
+            rss_level = int(entry.get("gather_rss_level", 8))
             if hero is None:
                 hero = Hero(
                     str(entry["nick"]),
                     str(entry["uid"]),
                     enabled=bool(entry["enabled"]),
                     tasks=tasks,
+                    gather_rss_level=rss_level,
                 )
                 hero.visited = f"{hero.uid}/{hero.nick}" in visited_keys
             else:
                 hero.enabled = bool(entry["enabled"])
                 hero.tasks = tasks
+                hero.gather_rss_level = rss_level
             new_list.append(hero)
 
         self.heroes = new_list
@@ -186,6 +189,7 @@ _heroes = [
         entry["uid"],
         enabled=bool(entry["enabled"]),
         tasks=dict(entry.get("tasks", {})),
+        gather_rss_level=int(entry.get("gather_rss_level", 8)),
     )
     for entry in load_whitelist()
 ]

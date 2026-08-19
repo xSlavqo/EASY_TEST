@@ -90,6 +90,7 @@ class TaskManager:
             if entry["uid"] == hero.uid and entry["nick"] == hero.nick:
                 hero.enabled = bool(entry.get("enabled", True))
                 hero.tasks = dict(entry.get("tasks") or {})
+                hero.gather_rss_level = int(entry.get("gather_rss_level", 8))
                 return
 
     def is_enabled(self, task_id: str, hero: Hero) -> bool:

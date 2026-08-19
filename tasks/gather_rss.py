@@ -28,6 +28,7 @@ from state.settings import settings
 from state.stop import check_stop, sleep as stop_sleep
 
 from game import go_to_map
+from game.hero_manager import manager
 
 # Ikony surowców w dolnym pasku wyszukiwania (1920×1080) — (x,y,w,h), label, key
 # Włączanie: gather_rss_gold / gather_rss_wood / gather_rss_ore w data/config.json
@@ -220,11 +221,20 @@ def _try_send_one_legion(
     return "sent", set_rss
 
 
+def _target_rss_level() -> int:
+    """Poziom nodów z bieżącego hero (ustawiany w panelu WWW)."""
+    hero = manager.logged_in_hero()
+    if hero is None:
+        logger.error("brak zalogowanego hero — domyślny poziom RSS 8")
+        return 8
+    return int(hero.gather_rss_level)
+
+
 def _ensure_rss_level(resource_key: str, *, delta: int = 0) -> bool:
     """
     Ustaw poziom wyszukiwania RSS.
 
-    Bez delta: cel z settings.gather_rss_level.
+    Bez delta: cel z hero.gather_rss_level.
     Z delta: cel = aktualny OCR + delta (np. -1), bez zmiany surowca.
 
     OCR raz → znajdź +/- raz → kliknij region N razy → OCR potwierdza.
@@ -241,7 +251,7 @@ def _ensure_rss_level(resource_key: str, *, delta: int = 0) -> bool:
     if delta != 0:
         target = current + delta
     else:
-        target = int(settings.gather_rss_level)
+        target = _target_rss_level()
     target = max(_RSS_LEVEL_MIN, min(_RSS_LEVEL_MAX, target))
     if delta != 0 and target == current:
         logger.error(

@@ -21,9 +21,6 @@ _GATHER_RSS_CHECKS = (
     ("gather_rss_ore", "RSS: ruda"),
 )
 
-_GATHER_RSS_LEVEL_MIN = 1
-_GATHER_RSS_LEVEL_MAX = 10
-
 # Limity pól liczbowych w panelu (godziny / sekundy).
 _HOURS_MIN = 0.1
 _HOURS_MAX = 168.0  # tydzień
@@ -86,28 +83,6 @@ def build_settings_panel(
                 value=bool(getattr(settings, key)),
                 on_change=_on_gather_toggle,
             )
-
-        with ui.row().classes("items-center gap-2 flex-wrap mt-2"):
-            ui.label("RSS: poziom")
-
-            def _on_level(e) -> None:
-                try:
-                    level = int(e.value)
-                except (TypeError, ValueError):
-                    return
-                level = max(
-                    _GATHER_RSS_LEVEL_MIN,
-                    min(_GATHER_RSS_LEVEL_MAX, level),
-                )
-                settings.gather_rss_level = level
-
-            ui.number(
-                value=int(settings.gather_rss_level),
-                min=_GATHER_RSS_LEVEL_MIN,
-                max=_GATHER_RSS_LEVEL_MAX,
-                step=1,
-                on_change=_on_level,
-            ).props("dense outlined").classes("w-24")
 
         ui.separator().classes("my-2")
         ui.label("Inne").classes("text-subtitle2")
