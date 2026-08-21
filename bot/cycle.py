@@ -32,10 +32,9 @@ def _cycle_wait_sec() -> float:
 
 
 def run_cycle() -> bool:
-    """Jeden cykl: clear pit/visited → gra → identify → taski → swap → harmonogram."""
+    """Jeden cykl: clear pit → gra → identify → taski → swap → harmonogram."""
     clear_expired_pit()
     reset_not_built_pit()
-    manager.reset_all_hero_visited()
 
     if not run_game():
         logger.warning("run_cycle — run_game nieudany")
@@ -81,11 +80,6 @@ def _should_run_tasks() -> bool:
     if not manager.is_hero_enabled():
         return False
     if not task_manager.has_any_task_enabled():
-        hero = manager.logged_in_hero()
-        logger.info(
-            "hero %s — wszystkie taski wyłączone, pomijam",
-            hero.nick if hero is not None else "?",
-        )
         return False
     return True
 

@@ -23,7 +23,8 @@ def schedule(entity_id: str, wait_sec: float) -> datetime:
     """
     next_run = datetime.now() + timedelta(seconds=wait_sec)
     save_data(INFO_PATH, schedule_next_run_key(entity_id), next_run.isoformat(timespec="seconds"))
-    logger.info("następne wysłanie o %s", next_run.strftime("%H:%M"))
+    if entity_id == BOT:
+        logger.info("następne wysłanie o %s", next_run.strftime("%H:%M"))
     return next_run
 
 

@@ -11,6 +11,7 @@ if str(_ROOT) not in sys.path:
 
 from bot import run_cycle
 from discord_bot import start_discord_bot
+from game.hero_manager import manager
 from log import logger
 from state.keys import BOT
 from state.schedule import sleep_until_due
@@ -40,6 +41,8 @@ def _bot_loop() -> None:
                     request_stop()
                     break
                 sleep_until_due(BOT, log=False)
+                # Reset visited dopiero po CD cyklu — przerwany cykl można wznowić.
+                manager.reset_all_hero_visited()
         except StopRequested:
             logger.warning("bot zatrzymany (gra pozostaje otwarta)")
 

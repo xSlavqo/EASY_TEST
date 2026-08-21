@@ -2,6 +2,7 @@
 TaskManager — reguły i uruchamianie tasków u bieżącego hero.
 
 run_tasks: włączone (global + per-hero) → due → odpal → CD / disable przy False.
+Na końcu jedno podsumowanie INFO; szczegóły tylko error/warning.
 """
 
 from __future__ import annotations
@@ -41,35 +42,29 @@ class TaskManager:
         _sync_hero_from_whitelist(hero)
         enabled = [spec.task_id for spec in _TASK_SPECS if self.is_enabled(spec.task_id, hero)]
         if not enabled:
-            logger.info(
-                "task_manager — %s: brak włączonych tasków (global + per-hero)",
-                hero.nick,
-            )
+            logger.info("%s — brak włączonych tasków", hero.nick)
             return True
 
-        logger.info(
-            "task_manager — %s: włączone taski: %s",
-            hero.nick,
-            ", ".join(enabled),
-        )
+        ok_ids: list[str] = []
+        failed_ids: list[str] = []
+        skipped_cd: list[str] = []
 
         for spec in _TASK_SPECS:
+            if not self.is_enabled(spec.task_id, hero):
+                continue
             if not self.can_run(spec.task_id, hero):
-                if self.is_enabled(spec.task_id, hero):
-                    logger.info(
-                        "task %s pominięty (cooldown / reguły)",
-                        spec.task_id,
-                    )
+                skipped_cd.append(spec.task_id)
                 continue
 
             result = spec.fn()
-            ok = bool(result[0]) if isinstance(result, tuple) else bool(result)
-            if not ok:
+            success = bool(result[0]) if isinstance(result, tuple) else bool(result)
+            if not success:
                 logger.error("task %s nieudany — wyłączam u %s", spec.task_id, hero.nick)
                 self._disable_task_on_hero(hero, spec.task_id)
+                failed_ids.append(spec.task_id)
                 continue
 
-            logger.info("task %s OK", spec.task_id)
+            ok_ids.append(spec.task_id)
             if spec.cooldown_settings_key and spec.schedule_id_for is not None:
                 hours = float(getattr(settings, spec.cooldown_settings_key))
                 schedule(
@@ -77,6 +72,7 @@ class TaskManager:
                     _hours_to_sec(hours),
                 )
 
+        logger.info("%s", _summary_line(hero.nick, ok_ids, failed_ids, skipped_cd))
         return True
 
     def can_run(self, task_id: str, hero: Hero) -> bool:
@@ -123,6 +119,33 @@ class TaskManager:
         )
 
 
+def _summary_line(
+    nick: str,
+    ok_ids: list[str],
+    failed_ids: list[str],
+    skipped_cd: list[str],
+) -> str:
+    """Jedna linia podsumowania po run_tasks."""
+    if failed_ids:
+        parts = [f"{nick} —"]
+        if ok_ids:
+            parts.append(f"OK: {', '.join(ok_ids)};")
+        parts.append(f"błąd (wyłączono): {', '.join(failed_ids)}")
+        if skipped_cd:
+            parts.append(f"; CD: {', '.join(skipped_cd)}")
+        return " ".join(parts)
+    if ok_ids and not skipped_cd:
+        return f"{nick} — wszystkie zadania OK ({', '.join(ok_ids)})"
+    if ok_ids and skipped_cd:
+        return (
+            f"{nick} — OK: {', '.join(ok_ids)}; "
+            f"pominięto CD: {', '.join(skipped_cd)}"
+        )
+    if skipped_cd:
+        return f"{nick} — brak due tasków (CD: {', '.join(skipped_cd)})"
+    return f"{nick} — brak tasków do wykonania"
+
+
 # --- pomocnicze ---
 
 _SETTINGS_BY_TASK = {task.task_id: task.settings_key for task in TASK_DEFS}
@@ -158,13 +181,13 @@ _TASK_SPECS: tuple[_TaskSpec, ...] = (
         schedule_id_for=alliance_rss_schedule_id,
     ),
     _TaskSpec("alliance_pit", alliance_pit),
+    _TaskSpec("gather_rss", gather_rss),
     _TaskSpec(
         "scount_sentry_post",
         scount_sentry_post,
         cooldown_settings_key="ssp_cooldown_h",
         schedule_id_for=scount_sentry_post_schedule_id,
     ),
-    _TaskSpec("gather_rss", gather_rss),
 )
 
 _SPEC_BY_ID = {spec.task_id: spec for spec in _TASK_SPECS}

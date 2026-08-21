@@ -118,6 +118,14 @@ def _build_status_card(
             ).props("flat dense")
 
         with ui.row().classes("items-center gap-2 flex-wrap"):
+            ui.label("czas do RSS sojuszu:")
+            alliance_rss_time_lbl = ui.label("—").classes("font-bold")
+            ui.button(
+                "Reset",
+                on_click=_reset_all_alliance_rss_schedules,
+            ).props("flat dense")
+
+        with ui.row().classes("items-center gap-2 flex-wrap"):
             ui.label("czas do pitu:")
             pit_time_lbl = ui.label("—").classes("font-bold")
             ui.label("stan:")
@@ -125,14 +133,6 @@ def _build_status_card(
             ui.button(
                 "Reset",
                 on_click=force_clear_pit,
-            ).props("flat dense")
-
-        with ui.row().classes("items-center gap-2 flex-wrap"):
-            ui.label("czas do RSS sojuszu:")
-            alliance_rss_time_lbl = ui.label("—").classes("font-bold")
-            ui.button(
-                "Reset",
-                on_click=_reset_all_alliance_rss_schedules,
             ).props("flat dense")
 
         with ui.row().classes("items-center gap-2 flex-wrap"):

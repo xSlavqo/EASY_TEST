@@ -107,7 +107,7 @@ def clear_expired_pit() -> None:
         return
     if expires > datetime.now():
         return
-    logger.info("alliance_pit — timer wygasł, czyszczę stan pitu")
+    logger.warning("alliance_pit — timer wygasł, czyszczę stan pitu")
     _save_state(_empty_state())
 
 
@@ -122,7 +122,7 @@ def force_clear_pit() -> None:
     global _not_built_this_cycle
     _not_built_this_cycle = False
     _save_state(_empty_state())
-    logger.info("alliance_pit — ręcznie wyczyszczono stan pitu")
+    logger.warning("alliance_pit — ręcznie wyczyszczono stan pitu")
 
 
 def pit_status_for_ui() -> tuple[str | None, float | None]:
@@ -153,7 +153,6 @@ def alliance_pit() -> bool:
         return True
 
     if _not_built_this_cycle:
-        logger.info("alliance_pit — not_built w tym cyklu, skip %s", hero.nick)
         return True
 
     state = _load_state()
@@ -164,18 +163,11 @@ def alliance_pit() -> bool:
         and hero.alliance
         and hero.alliance != pit_alliance
     ):
-        logger.info(
-            "alliance_pit — %s sojusz %s ≠ pit %s, skip",
-            hero.nick,
-            hero.alliance,
-            pit_alliance,
-        )
         return True
 
     key = _hero_key(hero)
     in_pit = key in _in_pit_set(state)
     if in_pit and _timer_alive(state):
-        logger.info("alliance_pit — %s już in_pit, timer żywy — skip", hero.nick)
         return True
 
     available = _is_pit_available()
@@ -297,25 +289,26 @@ def _if_gather(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
 
 
 def _if_building(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
-    """BUDUJ: OCR kind → create_legion → surowiec → legion_start → in_pit. Bez timera."""
+    """BUDUJ: kind z pitu lub OCR → create_legion → surowiec → legion_start → in_pit."""
     state = _load_state()
     kind: PitKind | None = None
     raw_kind = state.get("kind")
     if isinstance(raw_kind, str) and raw_kind in _RSS_BY_PIT_KIND:
         kind = raw_kind  # type: ignore[assignment]
+    else:
+        # Pierwszy hero / brak kind — OCR panelu.
+        bx, by, _bw, _bh = btn_rect
+        pdx, pdy, pw, ph = _OCR_PANEL_OFFSET
+        panel_region = (bx + pdx, by + pdy, pw, ph)
+        panel_raw = (get_text(panel_region, _OCR_ALLOWLIST) or "").strip()
+        panel_lower = panel_raw.lower()
 
-    bx, by, _bw, _bh = btn_rect
-    pdx, pdy, pw, ph = _OCR_PANEL_OFFSET
-    panel_region = (bx + pdx, by + pdy, pw, ph)
-    panel_raw = (get_text(panel_region, _OCR_ALLOWLIST) or "").strip()
-    panel_lower = panel_raw.lower()
-
-    for marker, pit_kind in _KIND_MARKERS:
-        if marker in panel_lower:
-            kind = pit_kind
-            break
-    if kind is None:
-        logger.warning("OCR pitu — nieznany rodzaj: %r", panel_raw[:120])
+        for marker, pit_kind in _KIND_MARKERS:
+            if marker in panel_lower:
+                kind = pit_kind
+                break
+        if kind is None:
+            logger.warning("OCR pitu — nieznany rodzaj: %r", panel_raw[:120])
 
     _create_or_update_pit(state, hero, status="building", kind=kind)
 
@@ -430,7 +423,6 @@ def _add_in_pit(state: dict[str, Any], hero: Hero) -> None:
     if key not in names:
         names.append(key)
         state["in_pit"] = names
-        logger.info("alliance_pit — %s dopisany do in_pit", hero.nick)
 
 
 def _create_or_update_pit(
@@ -443,7 +435,6 @@ def _create_or_update_pit(
     """Pierwszy building/gather tworzy pit (sojusz + status)."""
     if not state.get("alliance") and hero.alliance:
         state["alliance"] = hero.alliance
-        logger.info("alliance_pit — pit dla sojuszu %s", hero.alliance)
     state["status"] = status
     if kind is not None:
         state["kind"] = kind
@@ -474,5 +465,4 @@ def _read_timer_into(state: dict[str, Any]) -> bool:
     lock_sec = float(h * 3600 + m * 60 + s) + _LOCK_BUFFER_SEC
     expires = datetime.now() + timedelta(seconds=lock_sec)
     state["expires_at"] = expires.isoformat(timespec="seconds")
-    logger.info("alliance_pit — expires_at %s", state["expires_at"])
     return True
