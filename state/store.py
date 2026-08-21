@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .json_io import load_file, save_file_atomic
+from .json_io import load_file, mutate_file
 
 _ROOT = Path(__file__).resolve().parent.parent
 INFO_PATH = _ROOT / "data" / "info.json"
@@ -53,14 +53,15 @@ def get_data(path: Path, key: str, default: Any = None) -> Any:
 
 
 def save_data(path: Path, key: str, value: Any) -> None:
-    """Zapisz wartość pod kluczem z kropkami."""
-    data = load_file(path)
-    _set_nested(data, key, value)
-    save_file_atomic(path, data)
+    """Zapisz wartość pod kluczem z kropkami (RMW pod jednym lockiem)."""
+
+    def _apply(data: dict) -> bool:
+        _set_nested(data, key, value)
+        return True
+
+    mutate_file(path, _apply)
 
 
 def delete_data(path: Path, key: str) -> None:
     """Usuń klucz z pliku JSON."""
-    data = load_file(path)
-    if _delete_nested(data, key):
-        save_file_atomic(path, data)
+    mutate_file(path, lambda data: _delete_nested(data, key))

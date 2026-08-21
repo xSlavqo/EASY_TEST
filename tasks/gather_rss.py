@@ -46,6 +46,7 @@ _FIND_RESULT_TIMEOUT = (3.0, 5.0)
 _LEVEL_CLICK_TIMEOUT = 8.0
 _MAX_LEGION_SENDS = 5
 _MAX_SEND_RETRIES = 3
+_AFTER_SEND_DELAY = (0.7, 1.2)
 
 # OCR poziomu w popupie — napis jeździ w poziomie z suwakiem (szerokość zostaje).
 # y/h z wąskiego wycinka tekstu (bez uchwytu suwaka): y=761, h=19.
@@ -111,6 +112,8 @@ def gather_rss() -> tuple[bool, int]:
                 legions_sent += 1
                 if result == "sent_last":
                     return True, legions_sent
+                # UI po wysłaniu musi się odświeżyć zanim znowu F.
+                stop_sleep(random.uniform(*_AFTER_SEND_DELAY))
                 break
 
             if result == "no_more":
