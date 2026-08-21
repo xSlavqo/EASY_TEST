@@ -28,7 +28,6 @@ from .window import (
     _process_running,
     _window_hwnds,
     activate_window,
-    game_window_rect,
 )
 
 LAUNCHER_PATH = Path(r"C:\Program Files (x86)\Call of Dragons\launcher.exe")
@@ -46,7 +45,6 @@ Target = Literal["game", "launcher", "all"]
 __all__ = [
     "activate_window",
     "close_windows",
-    "game_window_rect",
     "run_game",
     "start_game",
     "start_launcher",

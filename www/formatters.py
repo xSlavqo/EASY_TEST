@@ -6,7 +6,6 @@ _PIT_STATUS_LABELS = {
     "not_built": "nie wybudowane",
     "building": "budowanie",
     "gather": "zbieranie",
-    "occupied": "zajęte",
 }
 
 
@@ -29,9 +28,10 @@ def format_countdown(remaining: float | None) -> str:
 
 
 def format_pit_time(status: str | None, remaining: float | None) -> str:
-    """not_built → —; inaczej format_countdown z harmonogramu."""
-    if status == "not_built":
-        return "—"
+    """building bez timera / brak → —; inaczej format_countdown z expires_at."""
+    if status == "not_built" or status == "building":
+        if remaining is None:
+            return "—"
     return format_countdown(remaining)
 
 
@@ -39,6 +39,8 @@ def format_pit_status(status: str | None, remaining: float | None = None) -> str
     """Etykieta stanu pitu."""
     if not status:
         return "—"
+    if status == "building":
+        return _PIT_STATUS_LABELS["building"]
     if status == "not_built":
         return _PIT_STATUS_LABELS["not_built"]
     if remaining is None or remaining <= 0:

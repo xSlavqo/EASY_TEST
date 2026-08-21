@@ -28,7 +28,7 @@ _IN_SSP_THRESHOLD = 0.98
 
 
 def scount_sentry_post() -> bool:
-    """Wejdź w SSP i zużywaj próby (try1/try2), aż znikną. True = OK."""
+    """Wejdź w SSP i zużywaj próby. True = OK; False = manager wyłącza task."""
     if not _ssp_entry():
         # Soft-skip: budynek/wejście niedostępne — nie failuj cyklu.
         logger.warning("scount_sentry_post — nie udało się wejść do SSP")

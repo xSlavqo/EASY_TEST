@@ -12,14 +12,13 @@ from nicegui import ui
 from game.hero_manager import manager
 from log import logger
 from state.keys import (
-    ALLIANCE_PIT_STATUS,
     BOT,
-    TASK_ALLIANCE_PIT,
+    alliance_rss_schedule_id,
     scount_sentry_post_schedule_id,
 )
 from state.schedule import remaining_sec, schedule
 from state.stop import is_stopped
-from state.store import INFO_PATH, get_data
+from tasks.alliance_pit import force_clear_pit, pit_status_for_ui
 from www.formatters import format_countdown, format_pit_status, format_pit_time
 
 # Logi z wątku bota → historia; każda karta przeglądarki dogania nowe linie.
@@ -29,15 +28,17 @@ _LOG_SEQ = 0
 _LOG_HANDLER_ATTACHED = False
 
 
-def _ssp_remaining_sec() -> float | None:
+def _soonest_per_hero_remaining(
+    schedule_id_for: Callable[[str, str], str],
+) -> float | None:
     """
-    Odliczanie SSP w panelu: 0 jeśli któryś hero jest due,
+    Odliczanie per-hero tasków: 0 jeśli któryś hero jest due,
     inaczej najbliższy przyszły termin wśród bohaterów.
     """
     soonest_future: float | None = None
     someone_due = False
     for hero in manager.heroes:
-        rem = remaining_sec(scount_sentry_post_schedule_id(hero.uid, hero.nick))
+        rem = remaining_sec(schedule_id_for(hero.uid, hero.nick))
         if rem is None or rem <= 0:
             someone_due = True
             continue
@@ -48,11 +49,22 @@ def _ssp_remaining_sec() -> float | None:
     return soonest_future
 
 
-def _reset_all_ssp_schedules() -> None:
-    """Reset harmonogramu SSP u wszystkich bohaterów → od razu due."""
+def _reset_all_hero_schedules(
+    schedule_id_for: Callable[[str, str], str],
+    label: str,
+) -> None:
+    """Reset harmonogramu u wszystkich bohaterów → od razu due."""
     for hero in manager.heroes:
-        schedule(scount_sentry_post_schedule_id(hero.uid, hero.nick), 0)
-    logger.info("zresetowano harmonogram SSP u wszystkich hero")
+        schedule(schedule_id_for(hero.uid, hero.nick), 0)
+    logger.info("zresetowano harmonogram %s u wszystkich hero", label)
+
+
+def _reset_all_ssp_schedules() -> None:
+    _reset_all_hero_schedules(scount_sentry_post_schedule_id, "SSP")
+
+
+def _reset_all_alliance_rss_schedules() -> None:
+    _reset_all_hero_schedules(alliance_rss_schedule_id, "RSS sojuszu")
 
 
 class _HistoryLogHandler(logging.Handler):
@@ -112,7 +124,15 @@ def _build_status_card(
             pit_status_lbl = ui.label("—").classes("font-bold")
             ui.button(
                 "Reset",
-                on_click=lambda: schedule(TASK_ALLIANCE_PIT, 0),
+                on_click=force_clear_pit,
+            ).props("flat dense")
+
+        with ui.row().classes("items-center gap-2 flex-wrap"):
+            ui.label("czas do RSS sojuszu:")
+            alliance_rss_time_lbl = ui.label("—").classes("font-bold")
+            ui.button(
+                "Reset",
+                on_click=_reset_all_alliance_rss_schedules,
             ).props("flat dense")
 
         with ui.row().classes("items-center gap-2 flex-wrap"):
@@ -152,12 +172,15 @@ def _build_status_card(
 
         def _sync_status() -> None:
             countdown_lbl.set_text(format_countdown(remaining_sec(BOT)))
-            raw_status = get_data(INFO_PATH, ALLIANCE_PIT_STATUS)
-            status = raw_status if isinstance(raw_status, str) else None
-            pit_rem = remaining_sec(TASK_ALLIANCE_PIT)
+            status, pit_rem = pit_status_for_ui()
             pit_time_lbl.set_text(format_pit_time(status, pit_rem))
             pit_status_lbl.set_text(format_pit_status(status, pit_rem))
-            ssp_time_lbl.set_text(format_countdown(_ssp_remaining_sec()))
+            alliance_rss_time_lbl.set_text(
+                format_countdown(_soonest_per_hero_remaining(alliance_rss_schedule_id))
+            )
+            ssp_time_lbl.set_text(
+                format_countdown(_soonest_per_hero_remaining(scount_sentry_post_schedule_id))
+            )
             visited_lbl.set_text(str(len(manager.visited_ids)))
             _sync_bot_btn()
 

@@ -73,17 +73,6 @@ def activate_window(target: Literal["game", "launcher"], *, attempts: int = 5) -
     return False
 
 
-def game_window_rect() -> tuple[int, int, int, int] | None:
-    """(left, top, right, bottom) największego okna gry albo None."""
-    hwnds = _window_hwnds(GAME_PROCESS)
-    if not hwnds:
-        return None
-    rect = wintypes.RECT()
-    if not _user32.GetWindowRect(hwnds[0], ctypes.byref(rect)):
-        return None
-    return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
-
-
 def _process_running(image_name: str) -> bool:
     return bool(_get_pids(image_name))
 

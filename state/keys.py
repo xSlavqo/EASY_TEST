@@ -5,10 +5,11 @@ TASK_ALLIANCE_RSS = "task.alliance_rss"
 TASK_ALLIANCE_PIT = "task.alliance_pit"
 TASK_SCOUNT_SENTRY_POST = "task.scount_sentry_post"
 
-# Stan pitu z ostatniego odczytu (not_built / gather / building / occupied).
-ALLIANCE_PIT_STATUS = "task.alliance_pit.status"
-ALLIANCE_PIT_WAVE_ACTIVE = "task.alliance_pit.wave_active"
-ALLIANCE_PIT_WAVE_KIND = "task.alliance_pit.wave_kind"
+# Blob stanu pitu: alliance, status, expires_at, in_pit, kind.
+ALLIANCE_PIT_STATE = "task.alliance_pit.state"
+
+# Runtime hero (alliance, hero_id, pdw) — bez logged_in.
+HEROES_RUNTIME = "heroes.runtime"
 
 # Lista odwiedzonych w bieżącym cyklu: ["uid/nick", ...].
 HEROES_VISITED = "heroes.visited"
@@ -25,3 +26,8 @@ def schedule_next_run_key(entity_id: str) -> str:
 def scount_sentry_post_schedule_id(uid: str, nick: str) -> str:
     """Harmonogram SSP per bohater: task.scount_sentry_post.<uid>/<nick>."""
     return f"{TASK_SCOUNT_SENTRY_POST}.{uid}/{nick}"
+
+
+def alliance_rss_schedule_id(uid: str, nick: str) -> str:
+    """Harmonogram RSS sojuszu per bohater: task.alliance_rss.<uid>/<nick>."""
+    return f"{TASK_ALLIANCE_RSS}.{uid}/{nick}"

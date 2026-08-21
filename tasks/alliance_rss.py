@@ -1,5 +1,5 @@
 """
-Zadanie: alliance RSS — sama sekwencja UI (kryteria startu w bot/cycle).
+Zadanie: alliance RSS — sama sekwencja UI (CD i enabled w task_manager).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ if str(_ROOT) not in sys.path:
 
 from game import go_to_alliance_menu
 from game.hero_manager import manager
-from input import find_and_click, press_key
+from input import find_and_click
 from log import logger
 from state.stop import sleep as stop_sleep
 
@@ -28,7 +28,7 @@ _AFTER_COLLECT_DELAY = (2.0, 3.0)
 
 
 def alliance_rss() -> bool:
-    """True = zebrano albo skip (brak sojuszu / DOŁĄCZ). False = błąd UI."""
+    """True = zebrano albo skip. False = błąd UI (manager wyłącza task u hero)."""
     if not manager.is_in_alliance():
         return True
     if not go_to_alliance_menu():

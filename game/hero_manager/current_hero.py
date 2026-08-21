@@ -112,6 +112,7 @@ class CurrentHero:
             matched.alliance = alliance
             matched.pdw = pdw
             matched.pdw_max = pdw_max
+            self.save_heroes_runtime()
             self._miss_streak = 0
             logger.info(
                 "zalogowano %s uid=%s hero_id=%s alliance=%s pdw=%s/%s%s",

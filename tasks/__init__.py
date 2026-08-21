@@ -1,7 +1,1 @@
-"""Misje bota — konkretne zadania w grze."""
-
-from .gather_rss import gather_rss
-
-__all__ = [
-    "gather_rss",
-]
+"""Misje bota — konkretne zadania w grze (importuj z tasks.nazwa_modułu)."""

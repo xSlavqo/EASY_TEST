@@ -86,7 +86,7 @@ def gather_rss() -> tuple[bool, int]:
     """
     Wykonaj sekwencję zbierania RSS — do _MAX_LEGION_SENDS wysłanych legionów.
 
-    Zwraca (rss_done, marches_sent).
+    Zwraca (ok, marches_sent). ok=False → manager wyłącza task u hero.
     """
 
     if not go_to_map():

@@ -16,7 +16,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from log import logger
-from state.keys import HEROES_VISITED
+from state.keys import HEROES_RUNTIME, HEROES_VISITED
 from state.store import INFO_PATH, get_data, save_data
 
 from .current_hero import CurrentHero, NO_ALLIANCE
@@ -35,11 +35,12 @@ class HeroManager(CurrentHero, HeroSwap):
         self._swap_target: str | None = None
         # False po 2× fail account_swap — do restartu procesu bota.
         self._account_swap_enabled = True
-        # Przywróć visited z info.json (przeżywa restart procesu).
+        # Przywróć visited + runtime (alliance/pdw/…) z info.json.
         raw = get_data(INFO_PATH, HEROES_VISITED, default=[])
         keys = {str(x) for x in raw} if isinstance(raw, list) else set()
         for hero in self.heroes:
             hero.visited = f"{hero.uid}/{hero.nick}" in keys
+        self._restore_heroes_runtime()
 
     @property
     def visited_ids(self) -> list[str]:
@@ -126,8 +127,48 @@ class HeroManager(CurrentHero, HeroSwap):
         for hero in self.heroes:
             if hero.logged_in:
                 hero.alliance = NO_ALLIANCE
+                self.save_heroes_runtime()
                 return
         logger.warning("mark_not_in_alliance — brak zalogowanego hero")
+
+    def save_heroes_runtime(self) -> None:
+        """Zapisz alliance/hero_id/pdw (bez logged_in) do info.json."""
+        rows: list[dict] = []
+        for hero in self.heroes:
+            rows.append(
+                {
+                    "uid": hero.uid,
+                    "nick": hero.nick,
+                    "alliance": hero.alliance,
+                    "hero_id": hero.hero_id,
+                    "pdw": hero.pdw,
+                    "pdw_max": hero.pdw_max,
+                }
+            )
+        save_data(INFO_PATH, HEROES_RUNTIME, rows)
+
+    def _restore_heroes_runtime(self) -> None:
+        """Wczytaj alliance/hero_id/pdw po restarcie procesu."""
+        raw = get_data(INFO_PATH, HEROES_RUNTIME, default=[])
+        if not isinstance(raw, list):
+            return
+        by_key = {
+            (str(row.get("uid", "")), str(row.get("nick", ""))): row
+            for row in raw
+            if isinstance(row, dict)
+        }
+        for hero in self.heroes:
+            row = by_key.get((hero.uid, hero.nick))
+            if row is None:
+                continue
+            alliance = row.get("alliance")
+            hero.alliance = str(alliance) if alliance is not None else None
+            hero_id = row.get("hero_id")
+            hero.hero_id = str(hero_id) if hero_id is not None else None
+            pdw = row.get("pdw")
+            hero.pdw = int(pdw) if isinstance(pdw, int) else None
+            pdw_max = row.get("pdw_max")
+            hero.pdw_max = int(pdw_max) if isinstance(pdw_max, int) else None
 
     def logged_in_hero(self) -> Hero | None:
         """Bieżąca postać po current_hero(), albo None."""
