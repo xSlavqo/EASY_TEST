@@ -1,8 +1,23 @@
 """
-Zadanie: centrum zasobów przymierza (alliance pit).
+Alliance pit — centrum zasobów sojuszu.
 
-Stan pitu (sojusz, building/gather, expires_at, in_pit) w info.json.
-Manager tylko woła alliance_pit gdy task włączony — reguły tu.
+DWA POZIOMY STANU (nie mylić):
+
+1) PitPhase (globalny, info.json, panel WWW)
+   - not_built     — brak pitu na mapie sojuszu
+   - constructing  — pit się buduje (dynamiczny czas, bez OCR timera)
+   - built         — pit wybudowany, faza zbierania (OCR timera możliwy)
+
+2) HeroView (przycisk UI u TEGO hero — szablony pit_build / pit_gather / pit_occupied)
+   - can_build   (BUDUJ)     — pit w constructing, hero jeszcze nie buduje → wyślij legion
+   - can_gather  (ZBIERZ)    — pit w built, hero jeszcze nie zbiera → wyślij legion
+   - in_pit      (WYŚWIETL)  — pit w built, legion TEGO hero już w picie → tylko OCR
+
+   in_pit (HeroView) NIE jest PitPhase. can_gather i in_pit = ten sam PitPhase: built.
+
+Lista in_pit (uid/nick) = hero wysłali legion (LEGION_START lub WYŚWIETL).
+
+TaskManager tylko woła alliance_pit() gdy włączony — reguły (sojusz, CD, lista) tu.
 """
 
 from __future__ import annotations
@@ -58,7 +73,6 @@ _OCR_ALLOWLIST = (
 )
 _TIMER_ALLOWLIST = "0123456789:"
 _TIMER_RE = re.compile(r"(\d{1,2}):(\d{2}):(\d{2})")
-_LOCK_BUFFER_SEC = 5 * 60
 
 _CLICK_TIMEOUT = 30.0
 _ALLY_MENU_CHECK_TIMEOUT = 4
@@ -68,9 +82,20 @@ _ACTION_DELAY = (0.5, 1.0)
 _POLL_INTERVAL = (0.5, 1.5)
 _MATCH_THRESHOLD = 0.99
 
-PitStatus = Literal["gather", "building"]
+# Faza pitu (globalna, JSON, WWW).
+PitPhase = Literal["not_built", "constructing", "built"]
+# Przycisk UI u bieżącego hero (nie zapisujemy jako PitPhase).
+HeroView = Literal["can_gather", "can_build", "in_pit"]
 PitKind = Literal["gold_pit", "wood_pit", "ore_pit", "mana_pit"]
-PitAvailability = Literal["built", "not_built", "nav_error", "no_alliance"]
+# Wejście w mapę pitu (czy plus istnieje).
+PitNavResult = Literal["pit_exists", "not_built", "nav_error", "no_alliance"]
+
+# Stare klucze w JSON → PitPhase (migracja przy odczycie).
+_LEGACY_PHASE: dict[str, PitPhase] = {
+    "building": "constructing",
+    "gather": "built",
+    "occupied": "built",
+}
 
 _LEGION_CONFIG_REGION: tuple[int, int, int, int] = (1220, 409, 186, 19)
 _GATHER_REGION_BTN: tuple[int, int, int, int] = (1318, 332, 150, 45)
@@ -81,10 +106,10 @@ _RSS_BY_PIT_KIND: dict[PitKind, tuple[int, int, int, int]] = {
     "mana_pit": (1626, 337, 35, 30),
 }
 
-_STATUS_TEMPLATES: tuple[tuple[Path, str], ...] = (
-    (_PIT_GATHER, "gather"),
-    (_PIT_BUILD, "building"),
-    (_PIT_OCCUPIED, "occupied"),
+_HERO_VIEW_TEMPLATES: tuple[tuple[Path, HeroView], ...] = (
+    (_PIT_GATHER, "can_gather"),
+    (_PIT_BUILD, "can_build"),
+    (_PIT_OCCUPIED, "in_pit"),
 )
 
 _KIND_MARKERS: tuple[tuple[str, PitKind], ...] = (
@@ -94,21 +119,51 @@ _KIND_MARKERS: tuple[tuple[str, PitKind], ...] = (
     ("rudy", "ore_pit"),
     ("many", "mana_pit"),
 )
+_KIND_LABELS: dict[PitKind, str] = {
+    "gold_pit": "złoto",
+    "wood_pit": "drewno",
+    "ore_pit": "ruda",
+    "mana_pit": "mana",
+}
 
 # Flaga tylko na czas jednego cyklu (nie na dysk).
 _not_built_this_cycle = False
 
 
-def clear_expired_pit() -> None:
-    """Jeśli expires_at minął — wyczyść sojusz, status, timer, in_pit, kind."""
+def pit_remaining_sec() -> float | None:
+    """Sekundy do expires_at; None = brak aktywnego timera pitu."""
+    expires = _parse_expires(_load_state().get("expires_at"))
+    if expires is None:
+        return None
+    return (expires - datetime.now()).total_seconds()
+
+
+def notify_and_clear_expired_pit() -> bool:
+    """Timer minął → INFO + @everyone na Discord, wyczyść stan. True = wygasł."""
     state = _load_state()
     expires = _parse_expires(state.get("expires_at"))
-    if expires is None:
-        return
-    if expires > datetime.now():
-        return
-    logger.warning("alliance_pit — timer wygasł, czyszczę stan pitu")
+    if expires is None or expires > datetime.now():
+        return False
+    alliance = state.get("alliance") or "?"
+    raw_kind = state.get("kind")
+    if isinstance(raw_kind, str) and raw_kind in _KIND_LABELS:
+        kind_label = _KIND_LABELS[raw_kind]  # type: ignore[index]
+    elif isinstance(raw_kind, str) and raw_kind:
+        kind_label = raw_kind
+    else:
+        kind_label = "?"
+    logger.info(
+        "@everyone\nalliance_pit — pit zniknął (sojusz: %s, kind: %s)",
+        alliance,
+        kind_label,
+    )
     _save_state(_empty_state())
+    return True
+
+
+def clear_expired_pit() -> None:
+    """Jeśli expires_at minął — powiadom (Discord) i wyczyść stan pitu."""
+    notify_and_clear_expired_pit()
 
 
 def reset_not_built_pit() -> None:
@@ -126,20 +181,18 @@ def force_clear_pit() -> None:
 
 
 def pit_status_for_ui() -> tuple[str | None, float | None]:
-    """(status, remaining_sec) dla panelu WWW."""
+    """(PitPhase, remaining_sec) dla panelu WWW."""
     state = _load_state()
-    status = state.get("status")
-    if not isinstance(status, str) or not status:
-        status = None
+    phase = _normalize_phase(state.get("phase") or state.get("status"))
     expires = _parse_expires(state.get("expires_at"))
     if expires is None:
-        return status, None
-    return status, (expires - datetime.now()).total_seconds()
+        return phase, None
+    return phase, (expires - datetime.now()).total_seconds()
 
 
 def alliance_pit() -> bool:
     """
-    True = OK (send / skip / occupied OCR).
+    True = OK (send / skip / OCR).
     False = fail UI — manager wyłącza task u tego hero.
     """
     global _not_built_this_cycle
@@ -166,25 +219,24 @@ def alliance_pit() -> bool:
         return True
 
     key = _hero_key(hero)
-    in_pit = key in _in_pit_set(state)
-    if in_pit and _timer_alive(state):
+    if key in _in_pit_set(state) and _timer_alive(state):
         return True
 
-    available = _is_pit_available()
-    if available == "nav_error":
+    nav = _navigate_to_pit()
+    if nav == "nav_error":
         logger.warning("alliance_pit — błąd nawigacji")
         return False
-    if available == "no_alliance":
+    if nav == "no_alliance":
         return True
-    if available == "not_built":
+    if nav == "not_built":
         _not_built_this_cycle = True
         logger.warning("pit: not_built — skip akcji u kolejnych hero w tym cyklu")
         return True
 
-    return _check_alliance_pit_status(hero)
+    return _resolve_hero_view(hero)
 
 
-def _is_pit_available() -> PitAvailability:
+def _navigate_to_pit() -> PitNavResult:
     """Terytorium sojuszu → zakładka centrów → klik zielonego plusa."""
     if not find_on_screen(_COLLECT_ALLY_RSS, timeout=_ALLY_MENU_CHECK_TIMEOUT):
         if not go_to_alliance_menu():
@@ -219,16 +271,16 @@ def _is_pit_available() -> PitAvailability:
         press_key("esc")
         return "not_built"
     stop_sleep(random.uniform(5.0, 7.0))
-    return "built"
+    return "pit_exists"
 
 
-def _check_alliance_pit_status(hero: Hero) -> bool:
-    """Klik środka → gather / building / occupied."""
+def _resolve_hero_view(hero: Hero) -> bool:
+    """Klik środka → can_gather / can_build / in_pit."""
     click_region(*_PIT_CENTER_REGION)
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
     found = wait_for_any_on_screen(
-        [tpl for tpl, _ in _STATUS_TEMPLATES],
+        [tpl for tpl, _ in _HERO_VIEW_TEMPLATES],
         threshold=_MATCH_THRESHOLD,
         timeout=_CLICK_TIMEOUT,
         poll_interval=_POLL_INTERVAL,
@@ -238,30 +290,29 @@ def _check_alliance_pit_status(hero: Hero) -> bool:
         return False
 
     index, btn_rect = found
-    status = _STATUS_TEMPLATES[index][1]
-    key = _hero_key(hero)
+    view = _HERO_VIEW_TEMPLATES[index][1]
     state = _load_state()
-    already_in = key in _in_pit_set(state)
+    already_in = _hero_key(hero) in _in_pit_set(state)
 
-    if status == "gather":
+    if view == "can_gather":
         if already_in:
-            logger.error(
-                "alliance_pit — %s in_pit, a UI=gather (dziwne) — ścieżka gather",
+            logger.warning(
+                "alliance_pit — %s in_pit, a UI=ZBIERZ — wysyłam ponownie",
                 hero.nick,
             )
-        return _if_gather(hero, btn_rect)
-    if status == "building":
-        return _if_building(hero, btn_rect)
-    return _if_occupied(hero, btn_rect)
+        return _hero_can_gather(hero, btn_rect)
+    if view == "can_build":
+        return _hero_can_build(hero, btn_rect)
+    return _hero_in_pit(hero, btn_rect)
 
 
-def _if_gather(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
-    """ZBIERZ → OCR → send → create_legion → legion_start → in_pit."""
+def _hero_can_gather(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
+    """ZBIERZ: pit=built → OCR → send → in_pit."""
     click_region(*btn_rect)
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
     state = _load_state()
-    _create_or_update_pit(state, hero, status="gather")
+    _set_pit_phase(state, hero, phase="built")
     if not _timer_alive(state):
         _read_timer_into(state)
 
@@ -288,15 +339,14 @@ def _if_gather(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
     return True
 
 
-def _if_building(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
-    """BUDUJ: kind z pitu lub OCR → create_legion → surowiec → legion_start → in_pit."""
+def _hero_can_build(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
+    """BUDUJ: pit=constructing, kind z pitu lub OCR → send → in_pit."""
     state = _load_state()
     kind: PitKind | None = None
     raw_kind = state.get("kind")
     if isinstance(raw_kind, str) and raw_kind in _RSS_BY_PIT_KIND:
         kind = raw_kind  # type: ignore[assignment]
     else:
-        # Pierwszy hero / brak kind — OCR panelu.
         bx, by, _bw, _bh = btn_rect
         pdx, pdy, pw, ph = _OCR_PANEL_OFFSET
         panel_region = (bx + pdx, by + pdy, pw, ph)
@@ -310,7 +360,7 @@ def _if_building(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
         if kind is None:
             logger.warning("OCR pitu — nieznany rodzaj: %r", panel_raw[:120])
 
-    _create_or_update_pit(state, hero, status="building", kind=kind)
+    _set_pit_phase(state, hero, phase="constructing", kind=kind)
 
     click_region(*btn_rect)
     stop_sleep(random.uniform(*_ACTION_DELAY))
@@ -331,7 +381,7 @@ def _if_building(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
         click_region(*_RSS_BY_PIT_KIND[kind])
         stop_sleep(random.uniform(*_ACTION_DELAY))
     else:
-        logger.warning("building: brak kind — pomijam wybór surowca")
+        logger.warning("can_build: brak kind — pomijam wybór surowca")
 
     if not find_and_click(_LEGION_START, timeout=_CLICK_TIMEOUT):
         logger.warning("nie znaleziono legion_start.png")
@@ -344,21 +394,18 @@ def _if_building(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
     return True
 
 
-def _if_occupied(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
-    """WYŚWIETL: legion tego hero już w picie → in_pit + OCR gdy trzeba."""
+def _hero_in_pit(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
+    """WYŚWIETL: pit=built, hero już w picie → in_pit + OCR gdy trzeba."""
     click_region(*btn_rect)
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
     state = _load_state()
-    if not state.get("alliance") and hero.alliance:
-        state["alliance"] = hero.alliance
-    if not state.get("status"):
-        state["status"] = "gather"
+    _set_pit_phase(state, hero, phase="built")
     _add_in_pit(state, hero)
 
     if not _timer_alive(state):
         if not _read_timer_into(state):
-            logger.warning("alliance_pit — occupied bez OCR timera")
+            logger.warning("alliance_pit — in_pit bez OCR timera")
             _save_state(state)
             if not find_and_click(_BACK_BUTTON, timeout=_CLICK_TIMEOUT):
                 press_key("esc")
@@ -379,11 +426,19 @@ def _if_occupied(hero: Hero, btn_rect: tuple[int, int, int, int]) -> bool:
 def _empty_state() -> dict[str, Any]:
     return {
         "alliance": None,
-        "status": None,
+        "phase": None,
         "expires_at": None,
         "in_pit": [],
         "kind": None,
     }
+
+
+def _normalize_phase(raw: object) -> PitPhase | None:
+    if not isinstance(raw, str) or not raw:
+        return None
+    if raw in ("not_built", "constructing", "built"):
+        return raw  # type: ignore[return-value]
+    return _LEGACY_PHASE.get(raw)
 
 
 def _load_state() -> dict[str, Any]:
@@ -393,8 +448,9 @@ def _load_state() -> dict[str, Any]:
     state = _empty_state()
     if isinstance(raw.get("alliance"), str):
         state["alliance"] = raw["alliance"]
-    if isinstance(raw.get("status"), str):
-        state["status"] = raw["status"]
+    phase = _normalize_phase(raw.get("phase") or raw.get("status"))
+    if phase is not None:
+        state["phase"] = phase
     if isinstance(raw.get("expires_at"), str):
         state["expires_at"] = raw["expires_at"]
     if isinstance(raw.get("kind"), str):
@@ -425,17 +481,17 @@ def _add_in_pit(state: dict[str, Any], hero: Hero) -> None:
         state["in_pit"] = names
 
 
-def _create_or_update_pit(
+def _set_pit_phase(
     state: dict[str, Any],
     hero: Hero,
     *,
-    status: PitStatus,
+    phase: PitPhase,
     kind: PitKind | None = None,
 ) -> None:
-    """Pierwszy building/gather tworzy pit (sojusz + status)."""
+    """Ustaw globalną fazę pitu (+ sojusz przy pierwszym zapisie)."""
     if not state.get("alliance") and hero.alliance:
         state["alliance"] = hero.alliance
-    state["status"] = status
+    state["phase"] = phase
     if kind is not None:
         state["kind"] = kind
 
@@ -462,7 +518,7 @@ def _read_timer_into(state: dict[str, Any]) -> bool:
         logger.warning("OCR pitu — brak timera: %r", timer_raw[:120])
         return False
     h, m, s = int(match.group(1)), int(match.group(2)), int(match.group(3))
-    lock_sec = float(h * 3600 + m * 60 + s) + _LOCK_BUFFER_SEC
+    lock_sec = float(h * 3600 + m * 60 + s)
     expires = datetime.now() + timedelta(seconds=lock_sec)
     state["expires_at"] = expires.isoformat(timespec="seconds")
     return True

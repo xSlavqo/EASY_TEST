@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-_PIT_STATUS_LABELS = {
+# PitPhase z tasks/alliance_pit.py (+ legacy building/gather).
+_PIT_PHASE_LABELS = {
     "not_built": "nie wybudowane",
+    "constructing": "budowanie",
+    "built": "wybudowany",
+    # legacy z JSON sprzed refaktoru
     "building": "budowanie",
-    "gather": "zbieranie",
+    "gather": "wybudowany",
 }
 
 
@@ -27,22 +31,21 @@ def format_countdown(remaining: float | None) -> str:
     return f"{seconds} s"
 
 
-def format_pit_time(status: str | None, remaining: float | None) -> str:
-    """building bez timera / brak → —; inaczej format_countdown z expires_at."""
-    if status == "not_built" or status == "building":
+def format_pit_time(phase: str | None, remaining: float | None) -> str:
+    """constructing bez timera / brak → —; inaczej format_countdown z expires_at."""
+    if phase in ("not_built", "constructing", "building"):
         if remaining is None:
             return "—"
     return format_countdown(remaining)
 
 
-def format_pit_status(status: str | None, remaining: float | None = None) -> str:
-    """Etykieta stanu pitu."""
-    if not status:
+def format_pit_status(phase: str | None, remaining: float | None = None) -> str:
+    """Etykieta fazy pitu (PitPhase)."""
+    if not phase:
         return "—"
-    if status == "building":
-        return _PIT_STATUS_LABELS["building"]
-    if status == "not_built":
-        return _PIT_STATUS_LABELS["not_built"]
-    if remaining is None or remaining <= 0:
-        return "do sprawdzenia"
-    return _PIT_STATUS_LABELS.get(status, status)
+    label = _PIT_PHASE_LABELS.get(phase)
+    if label:
+        if phase in ("built", "gather") and (remaining is None or remaining <= 0):
+            return "do sprawdzenia"
+        return label
+    return phase

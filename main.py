@@ -14,16 +14,33 @@ from discord_bot import start_discord_bot
 from game.hero_manager import manager
 from log import logger
 from state.keys import BOT
-from state.schedule import sleep_until_due
+from state.schedule import remaining_sec, sleep_until_due
 from state.stop import (
     StopRequested,
     check_stop,
     clear_stop,
     is_stopped,
     request_stop,
+    sleep as stop_sleep,
     start_hotkey_listener,
 )
+from tasks.alliance_pit import notify_and_clear_expired_pit, pit_remaining_sec
 from www.app import run_www
+
+
+def _sleep_between_cycles() -> None:
+    """CD cyklu — pilnuj wygaśnięcia pitu nawet w przerwie między cyklami."""
+    while True:
+        check_stop()
+        rem = remaining_sec(BOT)
+        if rem is None or rem <= 0:
+            return
+        notify_and_clear_expired_pit()
+        chunk = min(rem, 1.0)
+        pit_rem = pit_remaining_sec()
+        if pit_rem is not None and pit_rem > 0:
+            chunk = min(chunk, pit_rem)
+        stop_sleep(chunk)
 
 
 def _bot_loop() -> None:
@@ -40,7 +57,7 @@ def _bot_loop() -> None:
                     logger.error("cykl nieudany — zatrzymuję bota")
                     request_stop()
                     break
-                sleep_until_due(BOT, log=False)
+                _sleep_between_cycles()
                 # Reset visited dopiero po CD cyklu — przerwany cykl można wznowić.
                 manager.reset_all_hero_visited()
         except StopRequested:
