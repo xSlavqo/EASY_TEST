@@ -21,6 +21,7 @@ from state.settings import settings
 from state.task_defs import TASK_DEFS
 from tasks.alliance_pit import alliance_pit
 from tasks.alliance_rss import alliance_rss
+from tasks.gather_buff import gather_buff
 from tasks.gather_rss import gather_rss
 from tasks.scount_sentry_post import scount_sentry_post
 
@@ -181,6 +182,7 @@ _TASK_SPECS: tuple[_TaskSpec, ...] = (
         schedule_id_for=alliance_rss_schedule_id,
     ),
     _TaskSpec("alliance_pit", alliance_pit),
+    _TaskSpec("gather_buff", gather_buff),
     _TaskSpec("gather_rss", gather_rss),
     _TaskSpec(
         "scount_sentry_post",

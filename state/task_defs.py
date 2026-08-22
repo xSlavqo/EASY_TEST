@@ -17,6 +17,7 @@ class TaskDef:
 TASK_DEFS: tuple[TaskDef, ...] = (
     TaskDef("alliance_rss", "Odbierz surowce sojuszu", "alliance_rss_enabled"),
     TaskDef("alliance_pit", "Centrum zasobów przymierza", "alliance_pit_enabled"),
+    TaskDef("gather_buff", "Buff zbierania", "gather_buff_enabled"),
     TaskDef("gather_rss", "Zbieranie RSS", "gather_rss_enabled"),
     TaskDef("scount_sentry_post", "Sentry Post (próby scouta)", "scount_sentry_post_enabled"),
 )

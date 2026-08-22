@@ -5,10 +5,20 @@ Akcje na szablonach ekranu — znajdź, czekaj, kliknij.
 from __future__ import annotations
 
 import random
+import sys
 import time
+from pathlib import Path
 
-from .click import click_region
-from ..engine.vision import TemplateSource, locate_template, resolve_template, search_template
+try:
+    from .click import click_region
+    from ..engine.vision import TemplateSource, locate_template, resolve_template, search_template
+except ImportError:
+    _ROOT = Path(__file__).resolve().parents[2]
+    if str(_ROOT) not in sys.path:
+        sys.path.insert(0, str(_ROOT))
+    from input.api.click import click_region
+    from input.engine.vision import TemplateSource, locate_template, resolve_template, search_template
+
 from state.stop import check_stop, sleep as stop_sleep
 
 DEFAULT_THRESHOLD = 0.99
@@ -118,3 +128,12 @@ def wait_for_any_on_screen(
                 return index, rect
         _on_no_match(poll_interval)
     return None
+
+
+if __name__ == "__main__":
+    from state.stop import clear_stop
+
+    clear_stop()
+    tpl = "templates/gather_buff/active/buff_active_8h.png"
+    ok = find_on_screen(tpl, threshold=0.99, timeout=0.0)
+    print("TAK" if ok else "NIE")

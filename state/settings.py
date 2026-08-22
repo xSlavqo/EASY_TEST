@@ -15,6 +15,7 @@ _DEFAULTS: dict[str, Any] = {
     "close_game_after_cycle": False,
     "alliance_rss_enabled": True,
     "alliance_pit_enabled": True,
+    "gather_buff_enabled": True,
     "gather_rss_enabled": True,
     "scount_sentry_post_enabled": True,
     "gather_rss_gold": True,
