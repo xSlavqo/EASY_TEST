@@ -199,6 +199,30 @@ def pit_heroes_in_pit_for_ui() -> list[str]:
     return [str(x) for x in raw]
 
 
+def pit_meta_for_ui() -> tuple[str | None, str | None]:
+    """
+    (sojusz, rodzaj) dla panelu WWW.
+
+    sojusz — nazwa z JSON; rodzaj — etykieta PL (złoto/…) albo surowy kind.
+    Brak danych → (None, None) albo jedno None.
+    """
+    state = _load_state()
+    alliance = state.get("alliance")
+    if not isinstance(alliance, str) or not alliance:
+        alliance_out: str | None = None
+    else:
+        alliance_out = alliance
+
+    raw_kind = state.get("kind")
+    if isinstance(raw_kind, str) and raw_kind in _KIND_LABELS:
+        kind_out: str | None = _KIND_LABELS[raw_kind]  # type: ignore[index]
+    elif isinstance(raw_kind, str) and raw_kind:
+        kind_out = raw_kind
+    else:
+        kind_out = None
+    return alliance_out, kind_out
+
+
 def alliance_pit() -> bool:
     """
     True = OK (send / skip / OCR).

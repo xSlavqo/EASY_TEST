@@ -18,7 +18,12 @@ from state.keys import (
 )
 from state.schedule import remaining_sec, schedule
 from state.stop import is_stopped
-from tasks.alliance_pit import force_clear_pit, pit_heroes_in_pit_for_ui, pit_status_for_ui
+from tasks.alliance_pit import (
+    force_clear_pit,
+    pit_heroes_in_pit_for_ui,
+    pit_meta_for_ui,
+    pit_status_for_ui,
+)
 from www.formatters import format_countdown, format_pit_status, format_pit_time
 
 # Logi z wątku bota → historia; każda karta przeglądarki dogania nowe linie.
@@ -68,21 +73,35 @@ def _reset_all_alliance_rss_schedules() -> None:
 
 
 def _show_in_pit_dialog() -> None:
-    """Dialog: lista hero z in_pit (ładowana przy kliknięciu)."""
-    names = pit_heroes_in_pit_for_ui()
+    """Dialog: lista hero z in_pit; odświeżanie co 1 s aż do zamknięcia."""
     with ui.dialog() as dialog, ui.card().classes("min-w-64"):
         ui.label("Hero w picie").classes("text-subtitle1")
-        if not names:
-            ui.label("brak").classes("text-grey")
-        else:
-            for item in names:
-                # uid/nick → czytelniej: nick (uid)
-                if "/" in item:
-                    uid, nick = item.split("/", 1)
-                    ui.label(f"{nick} ({uid})")
+        list_box = ui.column().classes("w-full gap-0")
+
+        def _refresh_list() -> None:
+            list_box.clear()
+            with list_box:
+                names = pit_heroes_in_pit_for_ui()
+                if not names:
+                    ui.label("brak").classes("text-grey")
                 else:
-                    ui.label(item)
-        ui.button("Zamknij", on_click=dialog.close).props("flat")
+                    for item in names:
+                        # uid/nick → czytelniej: nick (uid)
+                        if "/" in item:
+                            uid, nick = item.split("/", 1)
+                            ui.label(f"{nick} ({uid})")
+                        else:
+                            ui.label(item)
+
+        _refresh_list()
+        refresh_timer = ui.timer(1.0, _refresh_list)
+
+        def _close() -> None:
+            refresh_timer.deactivate()
+            dialog.close()
+
+        ui.button("Zamknij", on_click=_close).props("flat")
+        dialog.on("hide", lambda: refresh_timer.deactivate())
     dialog.open()
 
 
@@ -156,7 +175,13 @@ def _build_status_card(
             ui.button(
                 "W picie",
                 on_click=_show_in_pit_dialog,
-            ).props("flat dense")
+            ).props("outline dense")
+
+        with ui.row().classes("items-center gap-2 flex-wrap"):
+            ui.label("rodzaj pitu:")
+            pit_kind_lbl = ui.label("—").classes("font-bold")
+            ui.label("sojusz:")
+            pit_alliance_lbl = ui.label("—").classes("font-bold")
 
         with ui.row().classes("items-center gap-2 flex-wrap"):
             ui.label("czas do SSP:")
@@ -198,6 +223,9 @@ def _build_status_card(
             status, pit_rem = pit_status_for_ui()
             pit_time_lbl.set_text(format_pit_time(status, pit_rem))
             pit_status_lbl.set_text(format_pit_status(status, pit_rem))
+            pit_alliance, pit_kind = pit_meta_for_ui()
+            pit_kind_lbl.set_text(pit_kind or "—")
+            pit_alliance_lbl.set_text(pit_alliance or "—")
             alliance_rss_time_lbl.set_text(
                 format_countdown(_soonest_per_hero_remaining(alliance_rss_schedule_id))
             )
