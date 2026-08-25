@@ -1,4 +1,9 @@
-"""Ustawienia użytkownika — odczyt/zapis data/config.json przy każdym dostępie."""
+"""
+Ustawienia z panelu WWW — data/config.json.
+
+Użycie: settings.gather_rss_enabled  /  settings.cycle_interval_min_h = 4.0
+Każdy odczyt/zapis idzie do pliku (przez store).
+"""
 
 from __future__ import annotations
 
@@ -21,6 +26,7 @@ _DEFAULTS: dict[str, Any] = {
     "gather_rss_gold": True,
     "gather_rss_wood": True,
     "gather_rss_ore": True,
+    "gather_rss_mana": True,
     # Harmonogram (godziny) — cykl bota i cooldowny tasków.
     "cycle_interval_min_h": 4.0,
     "cycle_interval_max_h": 5.0,
@@ -33,14 +39,16 @@ _DEFAULTS: dict[str, Any] = {
 
 
 class Settings:
-    """settings.nazwa → odczyt JSON; settings.nazwa = x → zapis JSON."""
+    """Jedna globalna fasada: settings.nazwa czyta/zapisuje config.json."""
 
     def __getattr__(self, name: str) -> Any:
+        """Odczyt: settings.xyz → wartość z JSON albo z _DEFAULTS."""
         if name.startswith("_") or name not in _DEFAULTS:
             raise AttributeError(f"nieznane ustawienie: {name}")
         return get_data(CONFIG_PATH, name, _DEFAULTS[name])
 
     def __setattr__(self, name: str, value: Any) -> None:
+        """Zapis: settings.xyz = v → do config.json (albo zwykłe pole z _)."""
         if name.startswith("_"):
             object.__setattr__(self, name, value)
             return
@@ -49,4 +57,5 @@ class Settings:
         save_data(CONFIG_PATH, name, value)
 
 
+# Jedyna instancja używana w całym projekcie.
 settings = Settings()

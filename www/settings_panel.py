@@ -19,6 +19,7 @@ _GATHER_RSS_CHECKS = (
     ("gather_rss_gold", "RSS: złoto"),
     ("gather_rss_wood", "RSS: drewno"),
     ("gather_rss_ore", "RSS: ruda"),
+    ("gather_rss_mana", "RSS: mana"),
 )
 
 # Limity pól liczbowych w panelu (godziny / sekundy).

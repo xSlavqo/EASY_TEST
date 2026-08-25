@@ -11,7 +11,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from game.hero_manager import manager
 from game.hero_manager.hero import Hero
 from game.hero_manager.whitelist import load_whitelist, set_hero_enabled, set_hero_task
 from log import logger
@@ -35,7 +34,7 @@ class TaskManager:
 
         Zawsze True — cykl robi visited. False taska → wyłącz task (ew. całego hero).
         """
-        hero = manager.logged_in_hero()
+        hero = Hero.current()
         if hero is None:
             logger.warning("run_tasks — brak zalogowanego hero")
             return True
@@ -99,7 +98,7 @@ class TaskManager:
 
     def has_any_task_enabled(self, hero: Hero | None = None) -> bool:
         """Czy hero ma choć jeden task włączony (global + per-hero), bez due."""
-        hero = hero or manager.logged_in_hero()
+        hero = hero or Hero.current()
         if hero is None:
             return False
         _sync_hero_from_whitelist(hero)

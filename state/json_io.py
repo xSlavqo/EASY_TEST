@@ -1,4 +1,8 @@
-"""Niskopoziomowy odczyt i zapis plików JSON."""
+"""
+Niski poziom: jak bezpiecznie czytać i pisać cały plik JSON.
+
+Używane przez store.py. Sam bot zwykle woła store.get_data / save_data, nie to.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ def ensure_parent_dir(path: Path) -> None:
 
 
 def _lock_for(path: Path) -> threading.Lock:
+    """Zwróć (lub stwórz) lock dla tej ścieżki — jeden na plik w całym procesie."""
     key = str(path.resolve())
     with _locks_guard:
         lock = _path_locks.get(key)
@@ -33,7 +38,7 @@ def _lock_for(path: Path) -> threading.Lock:
 
 
 def _read_dict(path: Path) -> dict:
-    """Odczyt bez locka — wołaj tylko trzymając _lock_for(path)."""
+    """Wczytaj cały JSON do słownika. Bez locka — wołaj tylko z _lock_for."""
     if not path.is_file():
         return {}
     try:
@@ -45,7 +50,7 @@ def _read_dict(path: Path) -> dict:
 
 
 def _write_dict(path: Path, data: dict) -> None:
-    """Zapis atomowy bez locka — wołaj tylko trzymając _lock_for(path)."""
+    """Zapisz słownik do JSON przez plik .tmp. Bez locka — wołaj tylko z _lock_for."""
     ensure_parent_dir(path)
     text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
@@ -61,7 +66,7 @@ def _write_dict(path: Path, data: dict) -> None:
 
 
 def _replace_with_retry(tmp: Path, path: Path) -> None:
-    """tmp → path; na Windowsie plik bywa chwilowo zablokowany (WWW / AV / OneDrive)."""
+    """Podmień tmp na docelowy plik; na Windowsie powtórz przy zajętym pliku."""
     last_error: BaseException | None = None
     for attempt in range(_REPLACE_ATTEMPTS):
         try:
@@ -82,22 +87,22 @@ def _replace_with_retry(tmp: Path, path: Path) -> None:
 
 
 def load_file(path: Path) -> dict:
-    """Wczytaj JSON; brak pliku lub błąd parsowania → pusty słownik."""
+    """Wczytaj cały plik JSON pod lockiem. Brak pliku / błąd → pusty słownik."""
     with _lock_for(path):
         return _read_dict(path)
 
 
 def save_file_atomic(path: Path, data: dict) -> None:
-    """Zapisz JSON atomowo przez plik tymczasowy (retry przy PermissionError)."""
+    """Zapisz cały słownik do JSON pod lockiem (przez plik tymczasowy)."""
     with _lock_for(path):
         _write_dict(path, data)
 
 
 def mutate_file(path: Path, mutator: Callable[[dict], bool]) -> None:
     """
-    Odczyt → mutator(data) → zapis pod jednym lockiem.
+    Odczyt → zmiana w pamięci → zapis, wszystko pod jednym lockiem.
 
-    mutator zwraca True = zapisz; False = nic nie zapisuj.
+    mutator(data) zwraca True = zapisz; False = nic nie zapisuj.
     """
     with _lock_for(path):
         data = _read_dict(path)

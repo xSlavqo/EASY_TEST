@@ -190,6 +190,15 @@ def pit_status_for_ui() -> tuple[str | None, float | None]:
     return phase, (expires - datetime.now()).total_seconds()
 
 
+def pit_heroes_in_pit_for_ui() -> list[str]:
+    """Lista uid/nick z in_pit (pusta gdy brak) — do dialogu w panelu WWW."""
+    state = _load_state()
+    raw = state.get("in_pit") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(x) for x in raw]
+
+
 def alliance_pit() -> bool:
     """
     True = OK (send / skip / OCR).
@@ -200,7 +209,7 @@ def alliance_pit() -> bool:
     if not manager.is_in_alliance():
         return True
 
-    hero = manager.logged_in_hero()
+    hero = Hero.current()
     if hero is None:
         logger.warning("alliance_pit — brak zalogowanego hero")
         return True
@@ -218,8 +227,7 @@ def alliance_pit() -> bool:
     ):
         return True
 
-    key = _hero_key(hero)
-    if key in _in_pit_set(state) and _timer_alive(state):
+    if hero.key in _in_pit_set(state) and _timer_alive(state):
         return True
 
     nav = _navigate_to_pit()
@@ -292,7 +300,7 @@ def _resolve_hero_view(hero: Hero) -> bool:
     index, btn_rect = found
     view = _HERO_VIEW_TEMPLATES[index][1]
     state = _load_state()
-    already_in = _hero_key(hero) in _in_pit_set(state)
+    already_in = hero.key in _in_pit_set(state)
 
     if view == "can_gather":
         if already_in:
@@ -465,19 +473,14 @@ def _save_state(state: dict[str, Any]) -> None:
     save_data(INFO_PATH, ALLIANCE_PIT_STATE, state)
 
 
-def _hero_key(hero: Hero) -> str:
-    return f"{hero.uid}/{hero.nick}"
-
-
 def _in_pit_set(state: dict[str, Any]) -> set[str]:
     return set(state.get("in_pit") or [])
 
 
 def _add_in_pit(state: dict[str, Any], hero: Hero) -> None:
-    key = _hero_key(hero)
     names = list(state.get("in_pit") or [])
-    if key not in names:
-        names.append(key)
+    if hero.key not in names:
+        names.append(hero.key)
         state["in_pit"] = names
 
 

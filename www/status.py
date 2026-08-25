@@ -18,7 +18,7 @@ from state.keys import (
 )
 from state.schedule import remaining_sec, schedule
 from state.stop import is_stopped
-from tasks.alliance_pit import force_clear_pit, pit_status_for_ui
+from tasks.alliance_pit import force_clear_pit, pit_heroes_in_pit_for_ui, pit_status_for_ui
 from www.formatters import format_countdown, format_pit_status, format_pit_time
 
 # Logi z wątku bota → historia; każda karta przeglądarki dogania nowe linie.
@@ -65,6 +65,25 @@ def _reset_all_ssp_schedules() -> None:
 
 def _reset_all_alliance_rss_schedules() -> None:
     _reset_all_hero_schedules(alliance_rss_schedule_id, "RSS sojuszu")
+
+
+def _show_in_pit_dialog() -> None:
+    """Dialog: lista hero z in_pit (ładowana przy kliknięciu)."""
+    names = pit_heroes_in_pit_for_ui()
+    with ui.dialog() as dialog, ui.card().classes("min-w-64"):
+        ui.label("Hero w picie").classes("text-subtitle1")
+        if not names:
+            ui.label("brak").classes("text-grey")
+        else:
+            for item in names:
+                # uid/nick → czytelniej: nick (uid)
+                if "/" in item:
+                    uid, nick = item.split("/", 1)
+                    ui.label(f"{nick} ({uid})")
+                else:
+                    ui.label(item)
+        ui.button("Zamknij", on_click=dialog.close).props("flat")
+    dialog.open()
 
 
 class _HistoryLogHandler(logging.Handler):
@@ -133,6 +152,10 @@ def _build_status_card(
             ui.button(
                 "Reset",
                 on_click=force_clear_pit,
+            ).props("flat dense")
+            ui.button(
+                "W picie",
+                on_click=_show_in_pit_dialog,
             ).props("flat dense")
 
         with ui.row().classes("items-center gap-2 flex-wrap"):

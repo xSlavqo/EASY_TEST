@@ -94,8 +94,7 @@ class CurrentHero:
 
             matched = _hero_by_nick(self.heroes, nick)
             if matched is None:
-                for hero in self.heroes:
-                    hero.logged_in = False
+                Hero.clear_logged_in()
                 logger.warning(
                     "current_hero — nick %r nie ma na whitelist — swap",
                     nick,
@@ -106,8 +105,7 @@ class CurrentHero:
             alliance = _parse_alliance(get_text(_ALLIANCE_REGION, _ALLIANCE_ALLOW))
             pdw, pdw_max = _parse_pdw(get_text(_PDW_REGION, _PDW_ALLOW))
 
-            for hero in self.heroes:
-                hero.logged_in = hero is matched
+            matched.logged_in = True
             matched.hero_id = hero_id or None
             matched.alliance = alliance
             matched.pdw = pdw
@@ -126,8 +124,7 @@ class CurrentHero:
             )
             return True
 
-        for hero in self.heroes:
-            hero.logged_in = False
+        Hero.clear_logged_in()
         self._miss_streak += 1
         logger.error("nie wykryto bohatera (%s/%s)", self._miss_streak, 3)
         if self._miss_streak >= 3:

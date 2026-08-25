@@ -1,4 +1,15 @@
-"""Persystencja stanu bota i rejestrów JSON."""
+"""
+Pakiet state — dysk i sterowanie botem.
+
+Pliki (od dołu):
+  json_io   — jak czytać/pisać cały plik JSON
+  store     — klucz → wartość w JSON (get_data / save_data)
+  keys      — nazwy kluczy w info.json
+  schedule  — kiedy bot/task może ruszyć
+  settings  — config.json (panel WWW)
+  stop      — Start/Stop / F9
+  task_defs — lista tasków (id + etykiety)
+"""
 
 from .keys import BOT
 from .schedule import is_due, schedule, sleep_until_due

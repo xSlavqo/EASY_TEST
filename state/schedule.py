@@ -1,4 +1,8 @@
-"""Harmonogram entity — persystencja w data/info.json."""
+"""
+Harmonogram: kiedy bot / task może znów ruszyć.
+
+Terminy siedzą w data/info.json (klucze z keys.schedule_next_run_key).
+"""
 
 from __future__ import annotations
 
@@ -17,9 +21,11 @@ from .store import INFO_PATH, delete_data, get_data, save_data
 
 
 def schedule(entity_id: str, wait_sec: float) -> datetime:
-    """Zapisz next_run_at = teraz + wait_sec.
+    """
+    Ustaw termin: next_run_at = teraz + wait_sec.
 
-    wait_sec=0 → termin = teraz → entity od razu due (np. Reset cyklu w UI).
+    wait_sec=0 → due od razu (np. Reset w panelu).
+    Zwraca datetime następnego uruchomienia.
     """
     next_run = datetime.now() + timedelta(seconds=wait_sec)
     save_data(INFO_PATH, schedule_next_run_key(entity_id), next_run.isoformat(timespec="seconds"))
@@ -29,13 +35,18 @@ def schedule(entity_id: str, wait_sec: float) -> datetime:
 
 
 def is_due(entity_id: str) -> bool:
-    """True = brak harmonogramu lub termin minął (wpuszczaj)."""
+    """True = można ruszać (brak terminu albo termin już minął)."""
     rem = remaining_sec(entity_id)
     return rem is None or rem <= 0
 
 
 def remaining_sec(entity_id: str) -> float | None:
-    """Sekundy do next_run_at; None = brak terminu; <=0 = już due."""
+    """
+    Ile sekund zostało do next_run_at.
+
+    None = brak terminu w JSON; <=0 = już due.
+    Przy BOT: jednorazowa migracja ze starego formatu kluczy.
+    """
     if entity_id == BOT:
         if not get_data(INFO_PATH, schedule_next_run_key(BOT)):
             legacy_next = get_data(INFO_PATH, LEGACY_SCHEDULE_NEXT_RUN_AT)
@@ -55,7 +66,11 @@ def remaining_sec(entity_id: str) -> float | None:
 
 
 def sleep_until_due(entity_id: str, *, log: bool = True) -> None:
-    """Czekaj do zapisanego next_run_at; reaguje na reset harmonogramu w UI."""
+    """
+    Śpij aż do next_run_at (krótkie kawałki).
+
+    Reaguje na Stop (F9) i na Reset harmonogramu w UI (schedule=0).
+    """
     logged = False
     while True:
         rem = remaining_sec(entity_id)

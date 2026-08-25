@@ -16,6 +16,18 @@ def fold_nick(nick: str) -> str:
 class Hero:
     """Jedna postać z whitelist: nick (unikalny) + uid (konto, może mieć wiele nicków)."""
 
+    _current: Hero | None = None
+
+    @classmethod
+    def current(cls) -> Hero | None:
+        """Zalogowany bohater (max jeden na całą aplikację), albo None."""
+        return cls._current
+
+    @classmethod
+    def clear_logged_in(cls) -> None:
+        """Zdejmij zalogowanego — np. nieznany nick albo brak OCR."""
+        cls._current = None
+
     def __init__(
         self,
         nick: str,
@@ -27,17 +39,32 @@ class Hero:
     ) -> None:
         self.nick = nick
         self.uid = uid
-        self.enabled = enabled
-        # Brak klucza = domyślnie włączone (gdy global też wł.).
+        self.enabled = enabled  # włącznik w panelu WWW
+
+        # Taski tej postaci: brak klucza = włączone (o ile global też wł.).
         self.tasks: dict[str, bool] = dict(tasks or {})
-        # Poziom nodów RSS (1–10) — osobno dla każdej postaci.
-        self.gather_rss_level = gather_rss_level
-        self.logged_in = False
-        self.visited = False
-        # None = jeszcze nie odczytane; "brak" = OCR "-" (bez sojuszu).
-        self.alliance: str | None = None
-        # Id tej postaci z przeglądu (to NIE uid konta).
-        self.hero_id: str | None = None
-        # PDW z przeglądu: aktualne / max (np. 1480/1480).
-        self.pdw: int | None = None
-        self.pdw_max: int | None = None
+        self.gather_rss_level = gather_rss_level  # poziom nodów RSS (1–10)
+
+        self.visited = False  # już obsłużony w bieżącym cyklu bota
+
+        # Poniżej: odczyt z ekranu przeglądu postaci (current_hero).
+        self.alliance: str | None = None  # None = nie wiemy; "brak" = bez sojuszu
+        self.hero_id: str | None = None  # id postaci w grze — to nie uid konta
+        self.pdw: int | None = None  # aktualne PDW, np. 1480 z "1480/1480"
+        self.pdw_max: int | None = None  # max PDW z tego samego OCR
+
+    @property
+    def key(self) -> str:
+        """Identyfikator postaci w JSON / pit / visited: uid/nick."""
+        return f"{self.uid}/{self.nick}"
+
+    @property
+    def logged_in(self) -> bool:
+        return Hero._current is self
+
+    @logged_in.setter
+    def logged_in(self, value: bool) -> None:
+        if value:
+            Hero._current = self
+        elif Hero._current is self:
+            Hero._current = None

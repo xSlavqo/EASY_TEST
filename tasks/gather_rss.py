@@ -28,14 +28,15 @@ from state.settings import settings
 from state.stop import check_stop, sleep as stop_sleep
 
 from game import go_to_map
-from game.hero_manager import manager
+from game.hero_manager.hero import Hero
 
 # Ikony surowców w dolnym pasku wyszukiwania (1920×1080) — (x,y,w,h), label, key
-# Włączanie: gather_rss_gold / gather_rss_wood / gather_rss_ore w data/config.json
+# Włączanie: gather_rss_gold / wood / ore / mana w data/config.json
 _RESOURCES = (
     ((700, 996, 93, 32), "kopalnia złota", "gold"),
     ((881, 991, 127, 43), "obóz drwali", "wood"),
     ((1127, 991, 104, 42), "kopalnia rudy", "ore"),
+    ((1362, 974, 75, 74), "studnia many", "mana"),
 )
 _ACTION_DELAY = (0.3, 0.7)
 _LEVEL_CLICK_DELAY = (0.05, 0.14)
@@ -54,8 +55,9 @@ _LEVEL_OCR_Y = 761
 _LEVEL_OCR_H = 19
 _LEVEL_OCR_REGIONS = {
     "gold": (570, _LEVEL_OCR_Y, 350, _LEVEL_OCR_H),
-    "wood": (786, _LEVEL_OCR_Y, 351, _LEVEL_OCR_H),
+    "wood": (786, _LEVEL_OCR_Y, 350, _LEVEL_OCR_H),
     "ore": (1010, _LEVEL_OCR_Y, 350, _LEVEL_OCR_H),
+    "mana": (1227, _LEVEL_OCR_Y, 350, _LEVEL_OCR_H),
 }
 _LEVEL_OCR_ALLOWLIST = "0123456789"
 _RSS_LEVEL_MIN = 1
@@ -96,7 +98,7 @@ def gather_rss() -> tuple[bool, int]:
 
     resource = _pick_resource()
     if resource is None:
-        logger.error("brak włączonych surowców w config (gather_rss_gold/wood/ore)")
+        logger.error("brak włączonych surowców w config (gather_rss_gold/wood/ore/mana)")
         return False, 0
 
     # Raz na hero: wybór surowca + ustawienie poziomu (kolejne legiony w tej sesji pomijają).
@@ -149,6 +151,7 @@ def _pick_resource():
         "gold": settings.gather_rss_gold,
         "wood": settings.gather_rss_wood,
         "ore": settings.gather_rss_ore,
+        "mana": settings.gather_rss_mana,
     }
     candidates = [r for r in _RESOURCES if enabled.get(r[2])]
     if not candidates:
@@ -226,7 +229,7 @@ def _try_send_one_legion(
 
 def _target_rss_level() -> int:
     """Poziom nodów z bieżącego hero (ustawiany w panelu WWW)."""
-    hero = manager.logged_in_hero()
+    hero = Hero.current()
     if hero is None:
         logger.error("brak zalogowanego hero — domyślny poziom RSS 8")
         return 8

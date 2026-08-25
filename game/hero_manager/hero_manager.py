@@ -39,7 +39,7 @@ class HeroManager(CurrentHero, HeroSwap):
         raw = get_data(INFO_PATH, HEROES_VISITED, default=[])
         keys = {str(x) for x in raw} if isinstance(raw, list) else set()
         for hero in self.heroes:
-            hero.visited = f"{hero.uid}/{hero.nick}" in keys
+            hero.visited = hero.key in keys
         self._restore_heroes_runtime()
 
     @property
@@ -61,11 +61,7 @@ class HeroManager(CurrentHero, HeroSwap):
         self._swap_target = None
         if not target:
             return False
-        current = None
-        for hero in self.heroes:
-            if hero.logged_in:
-                current = hero
-                break
+        current = Hero.current()
         if current is not None and current.nick.casefold() == target.casefold():
             return False
         got = current.nick if current is not None else "?"
@@ -91,16 +87,16 @@ class HeroManager(CurrentHero, HeroSwap):
 
     def hero_visited(self) -> None:
         """Oznacz zalogowanego bohatera jako odwiedzonego (+ zapis do info.json)."""
-        for hero in self.heroes:
-            if hero.logged_in:
-                hero.visited = True
-                save_data(
-                    INFO_PATH,
-                    HEROES_VISITED,
-                    sorted(f"{h.uid}/{h.nick}" for h in self.heroes if h.visited),
-                )
-                return
-        logger.error("hero_visited — brak zalogowanego bohatera")
+        hero = Hero.current()
+        if hero is None:
+            logger.error("hero_visited — brak zalogowanego bohatera")
+            return
+        hero.visited = True
+        save_data(
+            INFO_PATH,
+            HEROES_VISITED,
+            sorted(h.key for h in self.heroes if h.visited),
+        )
 
     def reset_all_hero_visited(self) -> None:
         """Wyzeruj visited u wszystkich — po zakończeniu cyklu (+ info.json)."""
@@ -110,26 +106,24 @@ class HeroManager(CurrentHero, HeroSwap):
 
     def is_visited(self) -> bool:
         """Czy zalogowany hero jest już oznaczony jako visited w tym cyklu."""
-        for hero in self.heroes:
-            if hero.logged_in:
-                return hero.visited
-        return False
+        hero = Hero.current()
+        return hero.visited if hero is not None else False
 
     def is_in_alliance(self) -> bool:
         """True tylko gdy current_hero zapisał nazwę sojuszu (nie pusto, nie 'brak')."""
-        for hero in self.heroes:
-            if hero.logged_in:
-                return bool(hero.alliance) and hero.alliance != NO_ALLIANCE
-        return False
+        hero = Hero.current()
+        if hero is None:
+            return False
+        return bool(hero.alliance) and hero.alliance != NO_ALLIANCE
 
     def mark_not_in_alliance(self) -> None:
         """Ekran DOŁĄCZ — ten hero bez sojuszu; kolejne taski ally się pomijają."""
-        for hero in self.heroes:
-            if hero.logged_in:
-                hero.alliance = NO_ALLIANCE
-                self.save_heroes_runtime()
-                return
-        logger.warning("mark_not_in_alliance — brak zalogowanego hero")
+        hero = Hero.current()
+        if hero is None:
+            logger.warning("mark_not_in_alliance — brak zalogowanego hero")
+            return
+        hero.alliance = NO_ALLIANCE
+        self.save_heroes_runtime()
 
     def save_heroes_runtime(self) -> None:
         """Zapisz alliance/hero_id/pdw (bez logged_in) do info.json."""
@@ -172,14 +166,11 @@ class HeroManager(CurrentHero, HeroSwap):
 
     def logged_in_hero(self) -> Hero | None:
         """Bieżąca postać po current_hero(), albo None."""
-        for hero in self.heroes:
-            if hero.logged_in:
-                return hero
-        return None
+        return Hero.current()
 
     def is_hero_enabled(self) -> bool:
         """Czy zalogowany hero jest włączony w panelu (nie zablokowany)."""
-        hero = self.logged_in_hero()
+        hero = Hero.current()
         return hero.enabled if hero is not None else False
 
     def reload_from_whitelist(self) -> None:
@@ -207,7 +198,7 @@ class HeroManager(CurrentHero, HeroSwap):
                     tasks=tasks,
                     gather_rss_level=rss_level,
                 )
-                hero.visited = f"{hero.uid}/{hero.nick}" in visited_keys
+                hero.visited = hero.key in visited_keys
             else:
                 hero.enabled = bool(entry["enabled"])
                 hero.tasks = tasks
@@ -215,13 +206,14 @@ class HeroManager(CurrentHero, HeroSwap):
             new_list.append(hero)
 
         self.heroes = new_list
+        current = Hero.current()
+        if current is not None and current not in new_list:
+            Hero.clear_logged_in()
 
     def _current_uid(self) -> str | None:
         """Uid konta zalogowanego bohatera."""
-        for hero in self.heroes:
-            if hero.logged_in:
-                return hero.uid
-        return None
+        hero = Hero.current()
+        return hero.uid if hero is not None else None
 
 
 _heroes = [
