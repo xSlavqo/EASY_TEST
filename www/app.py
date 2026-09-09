@@ -1,4 +1,4 @@
-"""Panel NiceGUI — klej: układa karty statusu, herosów i ustawień."""
+"""Panel NiceGUI — status, siatka kart herosów, ustawienia, logi."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from nicegui import app, ui
 from log import logger
 from www.heroes_panel import build_heroes_panel
 from www.settings_panel import build_settings_panel
-from www.status import build_status_column, ensure_log_handler
+from www.status import build_logs_card, build_status_bar, ensure_log_handler
 
 
 def _lan_ips() -> list[str]:
@@ -76,20 +76,23 @@ def run_www(
         ui.colors(primary="#2563eb")
         ui.query("body").classes("bg-[#2d2d2d]")
 
-        # PC: status+logi | herosi | ustawienia  ·  telefon: kolumna pod kolumną
+        # PC: główna kolumna (status + karty + logi) | ustawienia
+        # telefon: wszystko pod sobą
         with ui.row().classes(
-            "w-full min-h-screen p-4 gap-4 items-stretch flex-col "
-            "md:flex-row md:flex-nowrap md:h-screen bg-[#2d2d2d]"
+            "w-full min-h-screen p-4 gap-4 items-start flex-col "
+            "md:flex-row md:flex-nowrap bg-[#2d2d2d]"
         ):
-            build_status_column(on_start, on_stop)
-            refresh_heroes = build_heroes_panel()
+            with ui.column().classes("w-full flex-grow min-w-0 gap-4"):
+                build_status_bar(on_start, on_stop)
+                refresh_heroes = build_heroes_panel()
+                build_logs_card()
             build_settings_panel(on_global_task_change=refresh_heroes)
 
     ui.run(
         host=host,
         port=port,
         reload=False,
-        show=False,  # nie otwieraj przeglądarki przy starcie
+        show=False,
         title="EASY_TEST",
         favicon="🤖",
     )

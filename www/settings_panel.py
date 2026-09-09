@@ -51,7 +51,8 @@ def build_settings_panel(
 ) -> None:
     """Prawa karta: przełączniki tasków i liczby z config.json."""
     with ui.card().classes(
-        "w-full md:w-96 shrink-0 md:h-full overflow-auto bg-[#383838]"
+        "w-full md:w-96 shrink-0 md:sticky md:top-4 "
+        "md:max-h-[calc(100vh-2rem)] overflow-auto bg-[#383838]"
     ):
         ui.label("Ustawienia").classes("text-subtitle1")
 

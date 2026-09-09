@@ -1,4 +1,4 @@
-"""Karta statusu i logów — lewa kolumna panelu."""
+"""Pasek statusu (bot, cykl, pit) + logi."""
 
 from __future__ import annotations
 
@@ -72,39 +72,6 @@ def _reset_all_alliance_rss_schedules() -> None:
     _reset_all_hero_schedules(alliance_rss_schedule_id, "RSS sojuszu")
 
 
-def _show_in_pit_dialog() -> None:
-    """Dialog: lista hero z in_pit; odświeżanie co 1 s aż do zamknięcia."""
-    with ui.dialog() as dialog, ui.card().classes("min-w-64"):
-        ui.label("Hero w picie").classes("text-subtitle1")
-        list_box = ui.column().classes("w-full gap-0")
-
-        def _refresh_list() -> None:
-            list_box.clear()
-            with list_box:
-                names = pit_heroes_in_pit_for_ui()
-                if not names:
-                    ui.label("brak").classes("text-grey")
-                else:
-                    for item in names:
-                        # uid/nick → czytelniej: nick (uid)
-                        if "/" in item:
-                            uid, nick = item.split("/", 1)
-                            ui.label(f"{nick} ({uid})")
-                        else:
-                            ui.label(item)
-
-        _refresh_list()
-        refresh_timer = ui.timer(1.0, _refresh_list)
-
-        def _close() -> None:
-            refresh_timer.deactivate()
-            dialog.close()
-
-        ui.button("Zamknij", on_click=_close).props("flat")
-        dialog.on("hide", lambda: refresh_timer.deactivate())
-    dialog.open()
-
-
 class _HistoryLogHandler(logging.Handler):
     """Zapisuje sformatowane linie do wspólnej historii (wątkowo bezpiecznie)."""
 
@@ -130,69 +97,46 @@ def ensure_log_handler() -> None:
     _LOG_HANDLER_ATTACHED = True
 
 
-def build_status_column(
+def build_status_bar(
     on_start: Callable[[], None] | None,
     on_stop: Callable[[], None] | None,
 ) -> None:
-    """Lewa kolumna: status (odliczania, Start/Stop) + logi."""
-    with ui.column().classes("w-full flex-grow min-w-0 gap-4 md:h-full"):
-        _build_status_card(on_start, on_stop)
-        _build_logs_card()
-
-
-def _build_status_card(
-    on_start: Callable[[], None] | None,
-    on_stop: Callable[[], None] | None,
-) -> None:
+    """Górny pasek: Start/Stop, cykl, pit, skróty RSS/SSP, visited."""
     with ui.card().classes("w-full bg-[#383838]"):
-        ui.label("Status").classes("text-subtitle1")
+        with ui.row().classes("items-center gap-3 flex-wrap w-full"):
+            bot_btn = ui.button("Start")
 
-        with ui.row().classes("items-center gap-2 flex-wrap"):
-            ui.label("czas do następnego cyklu:")
+            def _toggle_bot() -> None:
+                if is_stopped():
+                    if on_start is not None:
+                        on_start()
+                else:
+                    if on_stop is not None:
+                        on_stop()
+                _sync_bot_btn()
+
+            bot_btn.on_click(_toggle_bot)
+
+            def _sync_bot_btn() -> None:
+                bot_btn.set_text("Start" if is_stopped() else "Stop (F9)")
+
+            ui.separator().props("vertical")
+
+            ui.label("cykl:").classes("text-grey")
             countdown_lbl = ui.label("—").classes("font-bold")
-            ui.button(
-                "Reset",
-                on_click=lambda: schedule(BOT, 0),
-            ).props("flat dense")
+            ui.button("Reset", on_click=lambda: schedule(BOT, 0)).props("flat dense")
 
-        with ui.row().classes("items-center gap-2 flex-wrap"):
-            ui.label("czas do RSS sojuszu:")
+            ui.label("RSS:").classes("text-grey")
             alliance_rss_time_lbl = ui.label("—").classes("font-bold")
-            ui.button(
-                "Reset",
-                on_click=_reset_all_alliance_rss_schedules,
-            ).props("flat dense")
+            ui.button("Reset", on_click=_reset_all_alliance_rss_schedules).props(
+                "flat dense"
+            )
 
-        with ui.row().classes("items-center gap-2 flex-wrap"):
-            ui.label("czas do pitu:")
-            pit_time_lbl = ui.label("—").classes("font-bold")
-            ui.label("stan:")
-            pit_status_lbl = ui.label("—").classes("font-bold")
-            ui.button(
-                "Reset",
-                on_click=force_clear_pit,
-            ).props("flat dense")
-            ui.button(
-                "W picie",
-                on_click=_show_in_pit_dialog,
-            ).props("outline dense")
-
-        with ui.row().classes("items-center gap-2 flex-wrap"):
-            ui.label("rodzaj pitu:")
-            pit_kind_lbl = ui.label("—").classes("font-bold")
-            ui.label("sojusz:")
-            pit_alliance_lbl = ui.label("—").classes("font-bold")
-
-        with ui.row().classes("items-center gap-2 flex-wrap"):
-            ui.label("czas do SSP:")
+            ui.label("SSP:").classes("text-grey")
             ssp_time_lbl = ui.label("—").classes("font-bold")
-            ui.button(
-                "Reset",
-                on_click=_reset_all_ssp_schedules,
-            ).props("flat dense")
+            ui.button("Reset", on_click=_reset_all_ssp_schedules).props("flat dense")
 
-        with ui.row().classes("items-center gap-2 flex-wrap"):
-            ui.label("odwiedzeni hero:")
+            ui.label("odwiedzeni:").classes("text-grey")
             visited_lbl = ui.label("0").classes("font-bold")
 
             def _clear_visited() -> None:
@@ -202,21 +146,18 @@ def _build_status_card(
 
             ui.button("Wyczyść", on_click=_clear_visited).props("flat dense")
 
-        bot_btn = ui.button("Start").classes("mt-2")
-
-        def _toggle_bot() -> None:
-            if is_stopped():
-                if on_start is not None:
-                    on_start()
-            else:
-                if on_stop is not None:
-                    on_stop()
-            _sync_bot_btn()
-
-        bot_btn.on_click(_toggle_bot)
-
-        def _sync_bot_btn() -> None:
-            bot_btn.set_text("Start" if is_stopped() else "Stop (F9)")
+        with ui.row().classes("items-center gap-3 flex-wrap w-full mt-1"):
+            ui.label("Pit:").classes("text-grey")
+            pit_status_lbl = ui.label("—").classes("font-bold")
+            ui.label("czas:").classes("text-grey")
+            pit_time_lbl = ui.label("—").classes("font-bold")
+            ui.label("rodzaj:").classes("text-grey")
+            pit_kind_lbl = ui.label("—").classes("font-bold")
+            ui.label("sojusz:").classes("text-grey")
+            pit_alliance_lbl = ui.label("—").classes("font-bold")
+            ui.label("w picie:").classes("text-grey")
+            pit_heroes_lbl = ui.label("—").classes("font-bold")
+            ui.button("Reset", on_click=force_clear_pit).props("flat dense")
 
         def _sync_status() -> None:
             countdown_lbl.set_text(format_countdown(remaining_sec(BOT)))
@@ -226,11 +167,27 @@ def _build_status_card(
             pit_alliance, pit_kind = pit_meta_for_ui()
             pit_kind_lbl.set_text(pit_kind or "—")
             pit_alliance_lbl.set_text(pit_alliance or "—")
+            names = pit_heroes_in_pit_for_ui()
+            if not names:
+                pit_heroes_lbl.set_text("brak")
+            else:
+                pretty: list[str] = []
+                for item in names:
+                    if "/" in item:
+                        _uid, nick = item.split("/", 1)
+                        pretty.append(nick)
+                    else:
+                        pretty.append(item)
+                pit_heroes_lbl.set_text(", ".join(pretty))
             alliance_rss_time_lbl.set_text(
-                format_countdown(_soonest_per_hero_remaining(alliance_rss_schedule_id))
+                format_countdown(
+                    _soonest_per_hero_remaining(alliance_rss_schedule_id)
+                )
             )
             ssp_time_lbl.set_text(
-                format_countdown(_soonest_per_hero_remaining(scount_sentry_post_schedule_id))
+                format_countdown(
+                    _soonest_per_hero_remaining(scount_sentry_post_schedule_id)
+                )
             )
             visited_lbl.set_text(str(len(manager.visited_ids)))
             _sync_bot_btn()
@@ -238,14 +195,13 @@ def _build_status_card(
         ui.timer(0.25, _sync_status)
 
 
-def _build_logs_card() -> None:
+def build_logs_card() -> None:
+    """Karta logów pod siatką herosów."""
     with ui.card().classes(
-        "w-full flex flex-col min-h-64 md:flex-grow md:min-h-0 bg-[#383838]"
+        "w-full flex flex-col min-h-48 md:min-h-64 bg-[#383838]"
     ):
         ui.label("Logi").classes("text-subtitle1")
-        log_view = ui.log(max_lines=500).classes(
-            "w-full flex-grow min-h-64 md:min-h-0"
-        )
+        log_view = ui.log(max_lines=500).classes("w-full min-h-48 md:min-h-56")
 
         last_seq = 0
 

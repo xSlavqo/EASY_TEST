@@ -31,6 +31,22 @@ def format_countdown(remaining: float | None) -> str:
     return f"{seconds} s"
 
 
+def format_countdown_short(remaining: float | None) -> str:
+    """Krótki zapis na kartach hero: due / 1h 23m / 5m 12s / —."""
+    if remaining is None:
+        return "—"
+    if remaining <= 0:
+        return "due"
+    total = int(remaining)
+    hours, rem = divmod(total, 3600)
+    minutes, seconds = divmod(rem, 60)
+    if hours >= 1:
+        return f"{hours}h {minutes}m"
+    if minutes >= 1:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
 def format_pit_time(phase: str | None, remaining: float | None) -> str:
     """constructing bez timera / brak → —; inaczej format_countdown z expires_at."""
     if phase in ("not_built", "constructing", "building"):
