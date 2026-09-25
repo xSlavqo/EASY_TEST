@@ -76,7 +76,8 @@ def is_in_game(*, timeout: float = _CITY_READY_TIMEOUT) -> bool:
             continue
         stop_sleep(random.uniform(*_CITY_READY_POLL))
 
-    logger.error("is_in_game — brak miasta/mapy przez %.0f s, próbuję Esc", timeout)
+    # Timeout to jeszcze nie porażka — najpierw Esc; ERROR dopiero gdy Esc nie pomoże.
+    logger.warning("is_in_game — brak miasta/mapy przez %.0f s, próbuję Esc", timeout)
     for attempt in range(_CITY_READY_MAX_ESC):
         activate_window("game")
         press_key("esc")

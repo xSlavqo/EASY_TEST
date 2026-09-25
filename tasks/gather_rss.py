@@ -121,7 +121,8 @@ def gather_rss() -> tuple[bool, int]:
             if result == "no_more":
                 return True, legions_sent
 
-            logger.error(
+            # Retry = jeszcze nie porażka → WARNING (bez @everyone / screena).
+            logger.warning(
                 "wysyłanie legionu %s nieudane (próba %s/%s) — wracam na mapę",
                 legion_idx + 1,
                 attempt,
@@ -176,7 +177,7 @@ def _try_send_one_legion(
         click_region(*resource[0], margin=_ICON_CLICK_MARGIN)
         stop_sleep(random.uniform(*_ACTION_DELAY))
         if not _ensure_rss_level(resource[2]):
-            logger.error("nie udało się ustawić poziomu RSS")
+            # Szczegół już w _ensure_rss_level — bez drugiego ERROR.
             return "failed", set_rss
     else:
         stop_sleep(random.uniform(*_ACTION_DELAY))
@@ -185,7 +186,7 @@ def _try_send_one_legion(
     # poziom -1, znowu SZUKAJ (bez wychodzenia z panelu).
     for _ in range(_RSS_LEVEL_MAX):
         if not find_and_click(_RSS_FIND, timeout=_CLICK_TIMEOUT):
-            logger.error("nie znaleziono rss_find.png")
+            logger.warning("nie znaleziono rss_find.png")
             return "failed", set_rss
         stop_sleep(random.uniform(*_ACTION_DELAY))
 
@@ -196,10 +197,9 @@ def _try_send_one_legion(
             break
 
         if not _ensure_rss_level(resource[2], delta=-1):
-            logger.error("nie udało się obniżyć poziomu RSS")
             return "failed", set_rss
     else:
-        logger.error("po zejściu z poziomem nadal brak rss_prepare_to_gather")
+        logger.warning("po zejściu z poziomem nadal brak rss_prepare_to_gather")
         return "failed", set_rss
     stop_sleep(random.uniform(*_ACTION_DELAY))
 
@@ -216,7 +216,7 @@ def _try_send_one_legion(
         stop_sleep(random.uniform(*_ACTION_DELAY))
 
     if not find_and_click(_LEGION_START, timeout=_CLICK_TIMEOUT):
-        logger.error("nie znaleziono legion_start.png")
+        logger.warning("nie znaleziono legion_start.png")
         return "failed", set_rss
 
     set_rss = False
@@ -231,7 +231,7 @@ def _target_rss_level() -> int:
     """Poziom nodów z bieżącego hero (ustawiany w panelu WWW)."""
     hero = Hero.current()
     if hero is None:
-        logger.error("brak zalogowanego hero — domyślny poziom RSS 8")
+        logger.warning("brak zalogowanego hero — domyślny poziom RSS 8")
         return 8
     return int(hero.gather_rss_level)
 
@@ -244,14 +244,15 @@ def _ensure_rss_level(resource_key: str, *, delta: int = 0) -> bool:
     Z delta: cel = aktualny OCR + delta (np. -1), bez zmiany surowca.
 
     OCR raz → znajdź +/- raz → kliknij region N razy → OCR potwierdza.
+    Błędy tu = WARNING (retry wyżej); ERROR dopiero po wyczerpaniu prób.
     """
     if _level_ocr_region(resource_key) is None:
-        logger.error("brak regionu OCR poziomu dla surowca %s", resource_key)
+        logger.warning("brak regionu OCR poziomu dla surowca %s", resource_key)
         return False
 
     current = _read_rss_level(resource_key)
     if current is None:
-        logger.error("OCR poziomu RSS nieudany (przed ustawieniem)")
+        logger.warning("OCR poziomu RSS nieudany (przed ustawieniem)")
         return False
 
     if delta != 0:
@@ -260,7 +261,7 @@ def _ensure_rss_level(resource_key: str, *, delta: int = 0) -> bool:
         target = _target_rss_level()
     target = max(_RSS_LEVEL_MIN, min(_RSS_LEVEL_MAX, target))
     if delta != 0 and target == current:
-        logger.error(
+        logger.warning(
             "poziom RSS już na granicy (%s), nie da się zmienić o %s",
             current,
             delta,
@@ -274,7 +275,7 @@ def _ensure_rss_level(resource_key: str, *, delta: int = 0) -> bool:
     template = _RSS_LEVEL_PLUS if diff > 0 else _RSS_LEVEL_MINUS
     clicks = abs(diff)
     if clicks > _LEVEL_ADJUST_MAX_CLICKS:
-        logger.error(
+        logger.warning(
             "różnica poziomu %s za duża (max %s klików)",
             clicks,
             _LEVEL_ADJUST_MAX_CLICKS,
@@ -283,7 +284,7 @@ def _ensure_rss_level(resource_key: str, *, delta: int = 0) -> bool:
 
     button = _locate_level_button(template)
     if button is None:
-        logger.error("nie znaleziono przycisku poziomu")
+        logger.warning("nie znaleziono przycisku poziomu")
         return False
 
     for _ in range(clicks):
@@ -293,10 +294,10 @@ def _ensure_rss_level(resource_key: str, *, delta: int = 0) -> bool:
 
     confirmed = _read_rss_level(resource_key)
     if confirmed is None:
-        logger.error("OCR poziomu RSS nieudany (po ustawieniu)")
+        logger.warning("OCR poziomu RSS nieudany (po ustawieniu)")
         return False
     if confirmed != target:
-        logger.error(
+        logger.warning(
             "poziom RSS po klikach: %s, oczekiwano %s",
             confirmed,
             target,
